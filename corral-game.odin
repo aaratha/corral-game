@@ -218,97 +218,6 @@ solve_collisions :: proc(
 	}
 }
 
-// Helper function to check if two line segments intersect
-line_intersect :: proc(p1, p2, p3, p4: rl.Vector2, EPSILON: f32) -> (rl.Vector2, bool) {
-	d := (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x)
-	if math.abs(d) < EPSILON {
-		return rl.Vector2{}, false // Lines are parallel or coincident
-	}
-	t := ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / d
-	u := -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / d
-	if t > EPSILON && t < 1 - EPSILON && u > EPSILON && u < 1 - EPSILON {
-		return rl.Vector2{p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y)}, true
-	}
-	return rl.Vector2{}, false // Lines are parallel or coincident
-}
-
-isClosed :: proc(rope: []PhysicsObject) -> (polygon: [dynamic]rl.Vector2) {
-	EPSILON :: 1e-5
-	ENDPOINT_OFFSET :: 0.01
-	for i in 0 ..< len(rope) {
-		for j in i + 2 ..< len(rope) - 1 {
-			if j == len(rope) - 1 && i == 0 {
-				continue // Skip checking the first and last segments
-			}
-			p1 := rope[i].pos
-			p2 := rope[i + 1].pos
-			p3 := rope[j].pos
-			p4 := rope[j + 1].pos
-			// Adjust endpoints slightly inward
-			dir12 := rl.Vector2Normalize(p2 - p1)
-			dir34 := rl.Vector2Normalize(p4 - p3)
-			p1 = p1 + dir12 * ENDPOINT_OFFSET
-			p2 = p2 - dir12 * ENDPOINT_OFFSET
-			p3 = p3 + dir34 * ENDPOINT_OFFSET
-			p4 = p4 - dir34 * ENDPOINT_OFFSET
-			intersection, intersects := line_intersect(p1, p2, p3, p4, EPSILON)
-			if intersects {
-				polygon := make([dynamic]rl.Vector2, 0)
-				for k in i ..= j {
-					append(&polygon, rope[k].pos)
-				}
-				inject_at(&polygon, 0, intersection)
-				append(&polygon, intersection)
-
-				return polygon // Intersection found, rope is closed
-			}
-		}
-	}
-	return nil // No intersection found, rope is open
-}
-
-kill_interior :: proc(
-	polygon: [dynamic]rl.Vector2,
-	enemies: ^[dynamic]PhysicsObject,
-	score: ^int,
-) {
-	RAY_LENGTH :: 1000.0
-
-	// highlight polygon
-	// for i in 0 ..< len(polygon) - 1 {
-	// 	rl.DrawLineEx(polygon[i], polygon[i + 1], 7, rl.RED)
-	// }
-
-	for enemy_idx := len(enemies^) - 1; enemy_idx >= 0; enemy_idx -= 1 {
-		enemy_pos := enemies[enemy_idx].pos
-		intersections := 0
-
-		// Cast a ray from the enemy in any fixed direction (e.g., to the right)
-		ray_end := rl.Vector2{enemy_pos.x + RAY_LENGTH, enemy_pos.y}
-
-		for i := 0; i < len(polygon) - 1; i += 1 {
-			segment_start := polygon[i]
-			segment_end := polygon[i + 1]
-
-			if _, intersects := line_intersect(
-				enemy_pos,
-				ray_end,
-				segment_start,
-				segment_end,
-				1e-5,
-			); intersects {
-				intersections += 1
-			}
-		}
-
-		// If the number of intersections is odd, the enemy is inside the loop
-		if intersections % 2 == 1 {
-			ordered_remove(enemies, enemy_idx)
-			score^ += 1
-		}
-	}
-}
-
 // Helper function to remove an element from a dynamic array
 ordered_remove :: proc(arr: ^[dynamic]PhysicsObject, index: int) {
 	if index < 0 || index >= len(arr^) {
@@ -431,10 +340,6 @@ main :: proc() {
 			update_tether_position(&ball_pos, &tether_pos, &isClicking, max_dist, camera)
 			update_enemies(&enemies, ball_pos) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
-			if isClosed(rope) != nil {
-				polygon := isClosed(rope)
-				kill_interior(polygon, &enemies, &score)
-			}
 			rope[rope_length - 1].pos +=
 				(tether_pos - rope[rope_length - 1].pos) / TETHER_LERP_FACTOR
 
