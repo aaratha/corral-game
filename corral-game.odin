@@ -1,7 +1,8 @@
 package main
 
 import "core:fmt"
-import math "core:math/linalg"
+import linalg "core:math/linalg"
+import math "core:math"
 import time "core:time"
 import rl "vendor:raylib"
 import "base:runtime"
@@ -181,13 +182,21 @@ spawn_enemy :: proc(enemies: ^[dynamic]PhysicsObject, camera: rl.Camera2D) {
 	append(enemies, PhysicsObject{pos = spawn_pos, prev_pos = spawn_pos})
 }
 
-update_enemies :: proc(enemies: ^[dynamic]PhysicsObject, player_pos: rl.Vector2) {
-	for &enemy in enemies {
-		// Calculate direction towards the player
-		direction := rl.Vector2Normalize(player_pos - enemy.pos)
-		enemy.pos += direction * ENEMY_SPEED // Adjust speed as necessary
-		verlet_integrate(&enemy, 1.0 / 60.0)
-	}
+update_enemies :: proc(enemies: ^[dynamic]PhysicsObject) {
+    for &enemy in enemies {
+        // Generate a random direction
+        angle := f32(rl.GetRandomValue(0, 359)) * math.PI / 180.0
+        direction := rl.Vector2{
+            math.cos_f32(angle),
+            math.sin_f32(angle),
+        }
+
+        // Move the enemy in the random direction
+        enemy.pos += direction * ENEMY_SPEED
+
+        // Apply verlet integration
+        verlet_integrate(&enemy, 1.0 / 60.0)
+    }
 }
 
 solve_collisions :: proc(
@@ -367,7 +376,7 @@ main :: proc() {
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
 			update_tether(&rope, &ball_pos, &tether_pos, &isClicking, max_dist, camera)
-			update_enemies(&enemies, ball_pos) // Update enemies to move towards the player
+			update_enemies(&enemies) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
 			rope[len(rope) - 1].pos +=
 				(tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
