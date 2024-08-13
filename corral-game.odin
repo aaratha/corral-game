@@ -4,6 +4,7 @@ import "core:fmt"
 import math "core:math/linalg"
 import time "core:time"
 import rl "vendor:raylib"
+import "base:runtime"
 
 SCREEN_WIDTH :: 1280
 SCREEN_HEIGHT :: 720
@@ -16,16 +17,20 @@ BG_COLOR :: rl.BLACK
 FG_COLOR :: rl.WHITE
 PLAYER_COLOR :: rl.WHITE
 PLAYER_RADIUS :: 12
-REST_ROPE_LENGTH :: 15
-EXT_ROPE_LENGTH :: 15
+REST_ROPE_LENGTH :: 8
+EXT_ROPE_LENGTH :: 20
 REST_LENGTH :: 1
-EXT_REST_LENGTH :: 15
+EXT_REST_LENGTH :: 5
 ROPE_MAX_DIST :: 70
 EXT_ROPE_MAX_DIST :: 300
 ENEMY_RADIUS :: 10
 ENEMY_COLOR :: rl.RED
 ENEMY_SPEED :: 0.5
 TETHER_RADIUS :: 10
+MIN_ZOOM :: 0.5
+MAX_ZOOM :: 2
+ZOOM_SPEED :: 0.06
+
 mat :: distinct matrix[2, 2]f32
 
 PhysicsObject :: struct {
@@ -84,7 +89,8 @@ handle_input :: proc(
 	if rl.IsKeyDown(.D) {direction.x += 1}
 	if rl.IsKeyDown(.A) {direction.x -= 1}
 
-    camera.zoom += rl.GetMouseWheelMove() * 0.1
+    camera.zoom += rl.GetMouseWheelMove() * ZOOM_SPEED
+    camera.zoom = math.clamp(camera.zoom, MIN_ZOOM, MAX_ZOOM)
 
 	isClicking^ = rl.IsMouseButtonDown(rl.MouseButton.LEFT)
 
@@ -103,7 +109,7 @@ update_ball_position :: proc(ball_pos, player_targ: ^rl.Vector2) {
 }
 
 update_tether :: proc(
-    rope: [dynamic]PhysicsObject,
+    rope: ^[dynamic]PhysicsObject,
     ball_pos, tether_pos: ^rl.Vector2,
     isClicking: ^bool,
     max_dist: int,
@@ -114,13 +120,29 @@ update_tether :: proc(
     to_mouse := world_mouse_position - ball_pos^
     distance := rl.Vector2Length(to_mouse)
 
+    // Calculate the desired tether position
+    desired_tether_pos: rl.Vector2
     if distance > f32(max_dist) {
-        tether_pos^ = ball_pos^ + rl.Vector2Normalize(to_mouse) * f32(max_dist)
+        desired_tether_pos = ball_pos^ + rl.Vector2Normalize(to_mouse) * f32(max_dist)
     } else {
-        tether_pos^ = world_mouse_position
+        desired_tether_pos = world_mouse_position
+    }
+
+    // Apply lerping to the tether position
+    tether_pos^ += (desired_tether_pos - tether_pos^) / TETHER_LERP_FACTOR
+
+    // Update rope length based on clicking state
+    if isClicking^ && (len(rope^) < EXT_ROPE_LENGTH) {
+        runtime.append_elem(rope, PhysicsObject{tether_pos^, tether_pos^})
+    } else if !isClicking^ && len(rope^) > REST_ROPE_LENGTH {
+        ordered_remove(rope, len(rope^) - 1)
+    }
+
+    // Update the last rope segment to match the tether position
+    if len(rope^) > 0 {
+        rope^[len(rope^) - 1].pos = tether_pos^
     }
 }
-
 random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
     // Calculate the camera's view boundaries
     camera_left := camera.target.x - camera.offset.x / camera.zoom
@@ -344,7 +366,7 @@ main :: proc() {
 			handle_input(&player_targ, &isClicking, &enemies, &camera)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
-			update_tether(rope, &ball_pos, &tether_pos, &isClicking, max_dist, camera)
+			update_tether(&rope, &ball_pos, &tether_pos, &isClicking, max_dist, camera)
 			update_enemies(&enemies, ball_pos) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
 			rope[len(rope) - 1].pos +=
