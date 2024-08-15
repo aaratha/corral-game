@@ -39,6 +39,10 @@ PhysicsObject :: struct {
 	prev_pos: rl.Vector2,
 }
 
+CollisionBox :: struct {
+    corner1: rl.Vector2,
+    corner2: rl.Vector2
+}
 
 verlet_integrate :: proc(segment: ^PhysicsObject, dt: f32) {
 	temp := segment.pos
@@ -80,7 +84,8 @@ update_rope :: proc(rope: [dynamic]PhysicsObject, ball_pos: rl.Vector2, rest_len
 
 handle_input :: proc(
 	player_targ: ^rl.Vector2,
-	isClicking: ^bool,
+	leftClicking: ^bool,
+	rightClicking: ^bool,
 	enemies: ^[dynamic]PhysicsObject,
     camera: ^rl.Camera2D
 ) {
@@ -93,7 +98,8 @@ handle_input :: proc(
     camera.zoom += rl.GetMouseWheelMove() * ZOOM_SPEED
     camera.zoom = math.clamp(camera.zoom, MIN_ZOOM, MAX_ZOOM)
 
-	isClicking^ = rl.IsMouseButtonDown(rl.MouseButton.LEFT)
+	leftClicking^ = rl.IsMouseButtonDown(rl.MouseButton.LEFT)
+    rightClicking^ = rl.IsMouseButtonDown(rl.MouseButton.RIGHT)
 
 	if direction.x != 0 || direction.y != 0 {
 		length := rl.Vector2Length(direction)
@@ -112,7 +118,7 @@ update_ball_position :: proc(ball_pos, player_targ: ^rl.Vector2) {
 update_tether :: proc(
     rope: ^[dynamic]PhysicsObject,
     ball_pos, tether_pos: ^rl.Vector2,
-    isClicking: ^bool,
+    leftClicking: ^bool,
     max_dist: int,
     camera: rl.Camera2D,
 ) {
@@ -133,9 +139,9 @@ update_tether :: proc(
     tether_pos^ += (desired_tether_pos - tether_pos^) / TETHER_LERP_FACTOR
 
     // Update rope length based on clicking state
-    if isClicking^ && (len(rope^) < EXT_ROPE_LENGTH) {
+    if leftClicking^ && (len(rope^) < EXT_ROPE_LENGTH) {
         runtime.append_elem(rope, PhysicsObject{tether_pos^, tether_pos^})
-    } else if !isClicking^ && len(rope^) > REST_ROPE_LENGTH {
+    } else if !leftClicking^ && len(rope^) > REST_ROPE_LENGTH {
         ordered_remove(rope, len(rope^) - 1)
     }
 
@@ -144,6 +150,7 @@ update_tether :: proc(
         rope^[len(rope^) - 1].pos = tether_pos^
     }
 }
+
 random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
     // Calculate the camera's view boundaries
     camera_left := camera.target.x - camera.offset.x / camera.zoom
@@ -196,6 +203,35 @@ update_enemies :: proc(enemies: ^[dynamic]PhysicsObject) {
 
         // Apply verlet integration
         verlet_integrate(&enemy, 1.0 / 60.0)
+    }
+}
+
+createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox) {
+    corner1: rl.Vector2
+    corner2: rl.Vector2
+
+    if rl.IsMouseButtonPressed(.RIGHT) {
+        rightClicking^ = true
+        corner1 = rl.GetMousePosition()
+    }
+
+    if rightClicking^ {
+        corner2 = rl.GetMousePosition()
+
+        // Draw the box in real-time
+        rl.DrawRectangleLines(
+            i32(min(corner1.x, corner2.x)),
+            i32(min(corner1.y, corner2.y)),
+            i32(abs(corner2.x - corner1.x)),
+            i32(abs(corner2.y - corner1.y)),
+            rl.WHITE
+        )
+    }
+
+    if rl.IsMouseButtonReleased(.RIGHT) {
+        rightClicking^ = false
+        // Add the new box to the boxes array
+        append(boxes, CollisionBox{corner1, corner2})
     }
 }
 
@@ -279,6 +315,7 @@ draw_scene :: proc(
 	framesCounter: int,
 	enemies: [dynamic]PhysicsObject,
 	score: int,
+    rightClicking: ^bool
 ) {
 	rl.BeginDrawing()
 	rl.BeginMode2D(camera)
@@ -301,7 +338,6 @@ draw_scene :: proc(
 		rl.DrawCircle(i32(enemy.pos.x), i32(enemy.pos.y), ENEMY_RADIUS, ENEMY_COLOR)
 	}
 
-
     // Calculate corner positions relative to the camera view
     screen_width := f32(rl.GetScreenWidth())
     screen_height := f32(rl.GetScreenHeight())
@@ -317,6 +353,9 @@ draw_scene :: proc(
     rl.DrawText("SCORE: ", i32(top_right.x) - 150, i32(top_right.y) + 10, 20, rl.GREEN)
     score_str := fmt.tprintf("%d", score)
     rl.DrawText(cstring(raw_data(score_str)), i32(top_right.x) - 70, i32(top_right.y) + 10, 20, rl.GREEN)
+    if rightClicking^ {
+        rl.DrawText("RIGHT CLICKING", i32(top_right.x - 600) - 150, i32(top_right.y) + 10, 20, rl.GREEN)
+    }
 
     if pause && (framesCounter / 30) % 2 != 0 {
         pause_text_pos := camera.target
@@ -334,7 +373,8 @@ main :: proc() {
 	ball_rad := f32(PLAYER_RADIUS)
 	player_targ := rl.Vector2{f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)}
 	tether_pos := rl.Vector2{}
-	isClicking := false
+	leftClicking := false
+    rightClicking := false
 	max_dist := ROPE_MAX_DIST
 
 	rope_length := REST_ROPE_LENGTH
@@ -345,6 +385,7 @@ main :: proc() {
 	initialize_rope(rope, rope_length, anchor)
 
 	enemies := make([dynamic]PhysicsObject, 0)
+    boxes := make([dynamic]CollisionBox, 0)
 	score := 0
 
 	pause := true
@@ -365,21 +406,22 @@ main :: proc() {
 			pause = !pause
 		}
 		if !pause {
-			if isClicking {
+			if leftClicking {
 				rest_length = EXT_REST_LENGTH
 				max_dist = EXT_ROPE_MAX_DIST
 			} else {
 				rest_length = REST_LENGTH
 				max_dist = ROPE_MAX_DIST
 			}
-			handle_input(&player_targ, &isClicking, &enemies, &camera)
+			handle_input(&player_targ, &leftClicking, &rightClicking, &enemies, &camera)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
-			update_tether(&rope, &ball_pos, &tether_pos, &isClicking, max_dist, camera)
+			update_tether(&rope, &ball_pos, &tether_pos, &leftClicking, max_dist, camera)
 			update_enemies(&enemies) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
 			rope[len(rope) - 1].pos +=
 				(tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
+            createBox(&rightClicking, &boxes)
 
 			// Spawn enemies periodically
 			if rl.GetTime() - lastSpawnTime > spawnInterval {
@@ -405,6 +447,7 @@ main :: proc() {
 			framesCounter,
 			enemies,
 			score,
+            &rightClicking
 		)
 	}
 }
