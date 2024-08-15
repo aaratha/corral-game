@@ -206,33 +206,26 @@ update_enemies :: proc(enemies: ^[dynamic]PhysicsObject) {
     }
 }
 
-createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox) {
-    corner1: rl.Vector2
-    corner2: rl.Vector2
+createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox) -> (rl.Vector2, rl.Vector2, bool) {
+    corner1, corner2: rl.Vector2
+    is_drawing := false
 
     if rl.IsMouseButtonPressed(.RIGHT) {
-        rightClicking^ = true
         corner1 = rl.GetMousePosition()
+        is_drawing = true
     }
 
     if rightClicking^ {
         corner2 = rl.GetMousePosition()
-
-        // Draw the box in real-time
-        rl.DrawRectangleLines(
-            i32(min(corner1.x, corner2.x)),
-            i32(min(corner1.y, corner2.y)),
-            i32(abs(corner2.x - corner1.x)),
-            i32(abs(corner2.y - corner1.y)),
-            rl.WHITE
-        )
     }
 
     if rl.IsMouseButtonReleased(.RIGHT) {
-        rightClicking^ = false
         // Add the new box to the boxes array
         append(boxes, CollisionBox{corner1, corner2})
+        is_drawing = false
     }
+
+    return corner1, corner2, is_drawing
 }
 
 solve_collisions :: proc(
@@ -315,7 +308,9 @@ draw_scene :: proc(
 	framesCounter: int,
 	enemies: [dynamic]PhysicsObject,
 	score: int,
-    rightClicking: ^bool
+    rightClicking: ^bool,
+    box_corner1, box_corner2: rl.Vector2,
+    is_drawing_box: bool,
 ) {
 	rl.BeginDrawing()
 	rl.BeginMode2D(camera)
@@ -361,6 +356,17 @@ draw_scene :: proc(
         pause_text_pos := camera.target
         rl.DrawText("PAUSED", i32(pause_text_pos.x) - 50, i32(pause_text_pos.y), 30, FG_COLOR)
     }
+
+    if is_drawing_box {
+        rl.DrawRectangleLines(
+            i32(min(box_corner1.x, box_corner2.x)),
+            i32(min(box_corner1.y, box_corner2.y)),
+            i32(abs(box_corner2.x - box_corner1.x)),
+            i32(abs(box_corner2.y - box_corner1.y)),
+            rl.WHITE
+        )
+    }
+
     rl.EndDrawing()
 }
 
@@ -385,8 +391,11 @@ main :: proc() {
 	initialize_rope(rope, rope_length, anchor)
 
 	enemies := make([dynamic]PhysicsObject, 0)
-    boxes := make([dynamic]CollisionBox, 0)
 	score := 0
+
+    boxes := make([dynamic]CollisionBox, 0)
+    box_corner1, box_corner2: rl.Vector2
+    is_drawing_box := false
 
 	pause := true
 	framesCounter := 0
@@ -413,6 +422,8 @@ main :: proc() {
 				rest_length = REST_LENGTH
 				max_dist = ROPE_MAX_DIST
 			}
+
+            box_corner1, box_corner2, is_drawing_box = createBox(&rightClicking, &boxes)
 			handle_input(&player_targ, &leftClicking, &rightClicking, &enemies, &camera)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
@@ -447,7 +458,10 @@ main :: proc() {
 			framesCounter,
 			enemies,
 			score,
-            &rightClicking
+            &rightClicking,
+            box_corner1,
+            box_corner2,
+            is_drawing_box
 		)
 	}
 }
