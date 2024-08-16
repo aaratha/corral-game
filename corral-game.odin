@@ -42,6 +42,7 @@ RopePoint :: struct {
 Enemy :: struct {
     pos:      rl.Vector2,
 	prev_pos: rl.Vector2,
+    color:    rl.Color
 }
 
 CollisionBox :: struct {
@@ -190,8 +191,15 @@ random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
 }
 
 spawn_enemy :: proc(enemies: ^[dynamic]Enemy, camera: rl.Camera2D) {
-	spawn_pos := random_outside_position(camera)
-	append(enemies, Enemy{pos = spawn_pos, prev_pos = spawn_pos})
+    spawn_pos := random_outside_position(camera)
+
+    // Array of three colors to choose from
+    colors := [3]rl.Color{rl.RED, rl.GREEN, rl.BLUE}
+
+    // Randomly select one of the three colors
+    random_color := colors[rl.GetRandomValue(0, 2)]
+
+    append(enemies, Enemy{pos = spawn_pos, prev_pos = spawn_pos, color = random_color})
 }
 
 update_enemies :: proc(enemies: ^[dynamic]Enemy) {
@@ -284,6 +292,52 @@ solve_collisions :: proc(
 			}
 		}
 	}
+
+    // Enemies vs Box walls
+    if enemies == nil || boxes == nil {
+        return
+    }
+
+    for i := 0; i < len(enemies); i += 1 {
+        if i >= len(enemies) {
+            break
+        }
+        enemy := &enemies[i]
+
+        for j := 0; j < len(boxes); j += 1 {
+            if j >= len(boxes) {
+                break
+            }
+            box := boxes[j]
+
+            // Calculate box boundaries
+            left := min(box.corner1.x, box.corner2.x)
+            right := max(box.corner1.x, box.corner2.x)
+            top := min(box.corner1.y, box.corner2.y)
+            bottom := max(box.corner1.y, box.corner2.y)
+
+            // Check collision with left wall
+            if enemy.pos.x - ENEMY_RADIUS < left && enemy.pos.x + ENEMY_RADIUS > left {
+                enemy.pos.x = left + ENEMY_RADIUS
+                enemy.prev_pos.x = enemy.pos.x
+            }
+            // Check collision with right wall
+            if enemy.pos.x + ENEMY_RADIUS > right && enemy.pos.x - ENEMY_RADIUS < right {
+                enemy.pos.x = right - ENEMY_RADIUS
+                enemy.prev_pos.x = enemy.pos.x
+            }
+            // Check collision with top wall
+            if enemy.pos.y - ENEMY_RADIUS < top && enemy.pos.y + ENEMY_RADIUS > top {
+                enemy.pos.y = top + ENEMY_RADIUS
+                enemy.prev_pos.y = enemy.pos.y
+            }
+            // Check collision with bottom wall
+            if enemy.pos.y + ENEMY_RADIUS > bottom && enemy.pos.y - ENEMY_RADIUS < bottom {
+                enemy.pos.y = bottom - ENEMY_RADIUS
+                enemy.prev_pos.y = enemy.pos.y
+            }
+        }
+    }
 }
 
 // Helper function to remove an element from a dynamic array
@@ -334,7 +388,7 @@ draw_scene :: proc(
 	}
 
 	for enemy in enemies {
-		rl.DrawCircle(i32(enemy.pos.x), i32(enemy.pos.y), ENEMY_RADIUS, ENEMY_COLOR)
+		rl.DrawCircle(i32(enemy.pos.x), i32(enemy.pos.y), ENEMY_RADIUS, enemy.color)
 	}
 
     // Calculate corner positions relative to the camera view
