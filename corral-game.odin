@@ -206,26 +206,26 @@ update_enemies :: proc(enemies: ^[dynamic]PhysicsObject) {
     }
 }
 
-createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox) -> (rl.Vector2, rl.Vector2, bool) {
-    corner1, corner2: rl.Vector2
-    is_drawing := false
+// Declare this at the top level of your file, outside any function
+box_corner1: rl.Vector2
+
+createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox, camera: ^rl.Camera2D) -> (rl.Vector2, rl.Vector2, bool) {
+    mouse_pos := rl.GetMousePosition()
+    world_mouse_position := rl.GetScreenToWorld2D(mouse_pos, camera^)
+
+    is_drawing := rl.IsMouseButtonDown(.RIGHT)
+    corner2 := world_mouse_position
 
     if rl.IsMouseButtonPressed(.RIGHT) {
-        corner1 = rl.GetMousePosition()
-        is_drawing = true
-    }
-
-    if rightClicking^ {
-        corner2 = rl.GetMousePosition()
+        box_corner1 = world_mouse_position
     }
 
     if rl.IsMouseButtonReleased(.RIGHT) {
         // Add the new box to the boxes array
-        append(boxes, CollisionBox{corner1, corner2})
-        is_drawing = false
+        append(boxes, CollisionBox{box_corner1, corner2})
     }
 
-    return corner1, corner2, is_drawing
+    return box_corner1, corner2, is_drawing
 }
 
 solve_collisions :: proc(
@@ -311,6 +311,7 @@ draw_scene :: proc(
     rightClicking: ^bool,
     box_corner1, box_corner2: rl.Vector2,
     is_drawing_box: bool,
+    boxes: [dynamic]CollisionBox
 ) {
 	rl.BeginDrawing()
 	rl.BeginMode2D(camera)
@@ -363,6 +364,16 @@ draw_scene :: proc(
             i32(min(box_corner1.y, box_corner2.y)),
             i32(abs(box_corner2.x - box_corner1.x)),
             i32(abs(box_corner2.y - box_corner1.y)),
+            rl.WHITE
+        )
+    }
+
+    for box in boxes {
+        rl.DrawRectangleLines(
+            i32(min(box.corner1.x, box.corner2.x)),
+            i32(min(box.corner1.y, box.corner2.y)),
+            i32(abs(box.corner2.x - box.corner1.x)),
+            i32(abs(box.corner2.y - box.corner1.y)),
             rl.WHITE
         )
     }
@@ -423,7 +434,7 @@ main :: proc() {
 				max_dist = ROPE_MAX_DIST
 			}
 
-            box_corner1, box_corner2, is_drawing_box = createBox(&rightClicking, &boxes)
+            box_corner1, box_corner2, is_drawing_box = createBox(&rightClicking, &boxes, &camera)
 			handle_input(&player_targ, &leftClicking, &rightClicking, &enemies, &camera)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
@@ -432,7 +443,6 @@ main :: proc() {
 			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
 			rope[len(rope) - 1].pos +=
 				(tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
-            createBox(&rightClicking, &boxes)
 
 			// Spawn enemies periodically
 			if rl.GetTime() - lastSpawnTime > spawnInterval {
@@ -461,7 +471,8 @@ main :: proc() {
             &rightClicking,
             box_corner1,
             box_corner2,
-            is_drawing_box
+            is_drawing_box,
+            boxes
 		)
 	}
 }
