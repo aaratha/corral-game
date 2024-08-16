@@ -230,17 +230,15 @@ createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox, camera: ^
 
 solve_collisions :: proc(
 	ball_pos: ^rl.Vector2,
-	ball_rad: int,
 	rope: [dynamic]PhysicsObject,
-	tether_rad: int,
 	enemies: ^[dynamic]PhysicsObject,
-	enemy_rad: int,
+    boxes: ^[dynamic]CollisionBox,
 ) {
 	// Ball vs Enemies
 	for i := 0; i < len(enemies); i += 1 {
 		dir := ball_pos^ - enemies[i].pos
 		distance := rl.Vector2Length(dir)
-		min_dist := f32(ball_rad + enemy_rad)
+		min_dist := f32(PLAYER_RADIUS + ENEMY_RADIUS)
 		if distance < min_dist {
 			normal := rl.Vector2Normalize(dir)
 			depth := min_dist - distance
@@ -254,7 +252,7 @@ solve_collisions :: proc(
 		for j := 0; j < len(enemies); j += 1 {
 			dir := rope[i].pos - enemies[j].pos
 			distance := rl.Vector2Length(dir)
-			min_dist := f32(tether_rad + enemy_rad)
+			min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS)
 
 			if distance < min_dist {
 				normal := rl.Vector2Normalize(dir)
@@ -271,7 +269,7 @@ solve_collisions :: proc(
 		for j := i + 1; j < len(enemies); j += 1 {
 			dir := enemies[i].pos - enemies[j].pos
 			distance := rl.Vector2Length(dir)
-			min_dist := f32(enemy_rad * 2)
+			min_dist := f32(ENEMY_RADIUS * 2)
 
 			if distance < min_dist {
 				normal := rl.Vector2Normalize(dir)
@@ -440,7 +438,7 @@ main :: proc() {
 			update_rope(rope, ball_pos, f32(rest_length))
 			update_tether(&rope, &ball_pos, &tether_pos, &leftClicking, max_dist, camera)
 			update_enemies(&enemies) // Update enemies to move towards the player
-			solve_collisions(&ball_pos, PLAYER_RADIUS, rope, TETHER_RADIUS, &enemies, ENEMY_RADIUS)
+			solve_collisions(&ball_pos, rope, &enemies, &boxes)
 			rope[len(rope) - 1].pos +=
 				(tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
 
