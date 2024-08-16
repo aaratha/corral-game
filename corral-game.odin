@@ -34,8 +34,13 @@ ZOOM_SPEED :: 0.06
 
 mat :: distinct matrix[2, 2]f32
 
-PhysicsObject :: struct {
+RopePoint :: struct {
 	pos:      rl.Vector2,
+	prev_pos: rl.Vector2,
+}
+
+Enemy :: struct {
+    pos:      rl.Vector2,
 	prev_pos: rl.Vector2,
 }
 
@@ -44,15 +49,15 @@ CollisionBox :: struct {
     corner2: rl.Vector2
 }
 
-verlet_integrate :: proc(segment: ^PhysicsObject, dt: f32) {
-	temp := segment.pos
-	velocity := segment.pos - segment.prev_pos
-	velocity = velocity * FRICTION
-	segment.pos = segment.pos + velocity
-	segment.prev_pos = temp
+verlet_integrate :: proc(object: ^$T, dt: f32) where T == RopePoint || T == Enemy {
+    temp := object.pos
+    velocity := object.pos - object.prev_pos
+    velocity = velocity * FRICTION
+    object.pos = object.pos + velocity
+    object.prev_pos = temp
 }
 
-constrain_rope :: proc(rope: [dynamic]PhysicsObject, rest_length: f32) {
+constrain_rope :: proc(rope: [dynamic]RopePoint, rest_length: f32) {
 	for i in 1 ..= len(rope) - 2 {
 		vec2prev := rope[i].pos - rope[i - 1].pos
 		vec2next := rope[i + 1].pos - rope[i].pos
@@ -68,13 +73,13 @@ constrain_rope :: proc(rope: [dynamic]PhysicsObject, rest_length: f32) {
 	}
 }
 
-initialize_rope :: proc(rope: [dynamic]PhysicsObject, length: int, anchor: rl.Vector2) {
+initialize_rope :: proc(rope: [dynamic]RopePoint, length: int, anchor: rl.Vector2) {
 	for i in 0 ..= length - 1 {
-		rope[i] = PhysicsObject{anchor, anchor}
+		rope[i] = RopePoint{anchor, anchor}
 	}
 }
 
-update_rope :: proc(rope: [dynamic]PhysicsObject, ball_pos: rl.Vector2, rest_length: f32) {
+update_rope :: proc(rope: [dynamic]RopePoint, ball_pos: rl.Vector2, rest_length: f32) {
 	for i in 0 ..= len(rope) - 1 {
 		verlet_integrate(&rope[i], 1.0 / 60.0)
 	}
@@ -86,7 +91,7 @@ handle_input :: proc(
 	player_targ: ^rl.Vector2,
 	leftClicking: ^bool,
 	rightClicking: ^bool,
-	enemies: ^[dynamic]PhysicsObject,
+	enemies: ^[dynamic]Enemy,
     camera: ^rl.Camera2D
 ) {
 	direction := rl.Vector2{0, 0}
@@ -116,7 +121,7 @@ update_ball_position :: proc(ball_pos, player_targ: ^rl.Vector2) {
 }
 
 update_tether :: proc(
-    rope: ^[dynamic]PhysicsObject,
+    rope: ^[dynamic]RopePoint,
     ball_pos, tether_pos: ^rl.Vector2,
     leftClicking: ^bool,
     max_dist: int,
@@ -140,7 +145,7 @@ update_tether :: proc(
 
     // Update rope length based on clicking state
     if leftClicking^ && (len(rope^) < EXT_ROPE_LENGTH) {
-        runtime.append_elem(rope, PhysicsObject{tether_pos^, tether_pos^})
+        runtime.append_elem(rope, RopePoint{tether_pos^, tether_pos^})
     } else if !leftClicking^ && len(rope^) > REST_ROPE_LENGTH {
         ordered_remove(rope, len(rope^) - 1)
     }
@@ -184,12 +189,12 @@ random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
     return rl.Vector2{x_pos, y_pos}
 }
 
-spawn_enemy :: proc(enemies: ^[dynamic]PhysicsObject, camera: rl.Camera2D) {
+spawn_enemy :: proc(enemies: ^[dynamic]Enemy, camera: rl.Camera2D) {
 	spawn_pos := random_outside_position(camera)
-	append(enemies, PhysicsObject{pos = spawn_pos, prev_pos = spawn_pos})
+	append(enemies, Enemy{pos = spawn_pos, prev_pos = spawn_pos})
 }
 
-update_enemies :: proc(enemies: ^[dynamic]PhysicsObject) {
+update_enemies :: proc(enemies: ^[dynamic]Enemy) {
     for &enemy in enemies {
         // Generate a random direction
         angle := f32(rl.GetRandomValue(0, 359)) * math.PI / 180.0
@@ -230,8 +235,8 @@ createBox :: proc(rightClicking: ^bool, boxes: ^[dynamic]CollisionBox, camera: ^
 
 solve_collisions :: proc(
 	ball_pos: ^rl.Vector2,
-	rope: [dynamic]PhysicsObject,
-	enemies: ^[dynamic]PhysicsObject,
+	rope: [dynamic]RopePoint,
+	enemies: ^[dynamic]Enemy,
     boxes: ^[dynamic]CollisionBox,
 ) {
 	// Ball vs Enemies
@@ -282,7 +287,7 @@ solve_collisions :: proc(
 }
 
 // Helper function to remove an element from a dynamic array
-ordered_remove :: proc(arr: ^[dynamic]PhysicsObject, index: int) {
+ordered_remove :: proc(arr: ^[dynamic]RopePoint, index: int) {
 	if index < 0 || index >= len(arr^) {
 		return
 	}
@@ -300,11 +305,11 @@ draw_scene :: proc(
 	camera: rl.Camera2D,
 	ball_pos: rl.Vector2,
 	ball_rad: f32,
-	rope: [dynamic]PhysicsObject,
+	rope: [dynamic]RopePoint,
 	rope_length: int,
 	pause: bool,
 	framesCounter: int,
-	enemies: [dynamic]PhysicsObject,
+	enemies: [dynamic]Enemy,
 	score: int,
     rightClicking: ^bool,
     box_corner1, box_corner2: rl.Vector2,
@@ -396,10 +401,10 @@ main :: proc() {
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
 	rest_length := REST_LENGTH
-	rope := make([dynamic]PhysicsObject, rope_length)
+	rope := make([dynamic]RopePoint, rope_length)
 	initialize_rope(rope, rope_length, anchor)
 
-	enemies := make([dynamic]PhysicsObject, 0)
+	enemies := make([dynamic]Enemy, 0)
 	score := 0
 
     boxes := make([dynamic]CollisionBox, 0)
