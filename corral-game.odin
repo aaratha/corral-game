@@ -293,48 +293,45 @@ solve_collisions :: proc(
 		}
 	}
 
-    // Enemies vs Box walls
+// Enemies vs Box walls
     if enemies == nil || boxes == nil {
         return
     }
 
-    for i := 0; i < len(enemies); i += 1 {
-        if i >= len(enemies) {
-            break
-        }
-        enemy := &enemies[i]
+    BOX_INFLUENCE_DISTANCE :: 10.0  // Distance from box edge where collisions are checked
 
-        for j := 0; j < len(boxes); j += 1 {
-            if j >= len(boxes) {
-                break
-            }
-            box := boxes[j]
-
+    // Enemies vs Boxes
+    for &enemy in enemies {
+        for box in boxes {
             // Calculate box boundaries
             left := min(box.corner1.x, box.corner2.x)
             right := max(box.corner1.x, box.corner2.x)
             top := min(box.corner1.y, box.corner2.y)
             bottom := max(box.corner1.y, box.corner2.y)
 
-            // Check collision with left wall
-            if enemy.pos.x - ENEMY_RADIUS < left && enemy.pos.x + ENEMY_RADIUS > left {
-                enemy.pos.x = left + ENEMY_RADIUS
-                enemy.prev_pos.x = enemy.pos.x
-            }
-            // Check collision with right wall
-            if enemy.pos.x + ENEMY_RADIUS > right && enemy.pos.x - ENEMY_RADIUS < right {
-                enemy.pos.x = right - ENEMY_RADIUS
-                enemy.prev_pos.x = enemy.pos.x
-            }
-            // Check collision with top wall
-            if enemy.pos.y - ENEMY_RADIUS < top && enemy.pos.y + ENEMY_RADIUS > top {
-                enemy.pos.y = top + ENEMY_RADIUS
-                enemy.prev_pos.y = enemy.pos.y
-            }
-            // Check collision with bottom wall
-            if enemy.pos.y + ENEMY_RADIUS > bottom && enemy.pos.y - ENEMY_RADIUS < bottom {
-                enemy.pos.y = bottom - ENEMY_RADIUS
-                enemy.prev_pos.y = enemy.pos.y
+            // Check if enemy is within the influence distance of the box
+            if enemy.pos.x >= left - BOX_INFLUENCE_DISTANCE &&
+               enemy.pos.x <= right + BOX_INFLUENCE_DISTANCE &&
+               enemy.pos.y >= top - BOX_INFLUENCE_DISTANCE &&
+               enemy.pos.y <= bottom + BOX_INFLUENCE_DISTANCE {
+
+                // Check collision with left and right walls
+                if enemy.pos.x - ENEMY_RADIUS < left {
+                    enemy.pos.x = left + ENEMY_RADIUS
+                    enemy.prev_pos.x = enemy.pos.x // Prevent sticking
+                } else if enemy.pos.x + ENEMY_RADIUS > right {
+                    enemy.pos.x = right - ENEMY_RADIUS
+                    enemy.prev_pos.x = enemy.pos.x // Prevent sticking
+                }
+
+                // Check collision with top and bottom walls
+                if enemy.pos.y - ENEMY_RADIUS < top {
+                    enemy.pos.y = top + ENEMY_RADIUS
+                    enemy.prev_pos.y = enemy.pos.y // Prevent sticking
+                } else if enemy.pos.y + ENEMY_RADIUS > bottom {
+                    enemy.pos.y = bottom - ENEMY_RADIUS
+                    enemy.prev_pos.y = enemy.pos.y // Prevent sticking
+                }
             }
         }
     }
