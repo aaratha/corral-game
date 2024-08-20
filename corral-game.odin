@@ -9,7 +9,6 @@ import "base:runtime"
 
 SCREEN_WIDTH :: 1280
 SCREEN_HEIGHT :: 720
-PLAYER_SPEED :: 7
 TETHER_LERP_FACTOR :: 6
 PLAYER_LERP_FACTOR :: 6
 CAMERA_LERP_FACTOR :: 6
@@ -19,13 +18,10 @@ FG_COLOR :: rl.WHITE
 PLAYER_COLOR :: rl.WHITE
 PLAYER_RADIUS :: 12
 REST_ROPE_LENGTH :: 8
-EXT_ROPE_LENGTH :: 20
 REST_LENGTH :: 1
-EXT_REST_LENGTH :: 5
+EXT_REST_LENGTH :: 4
 ROPE_MAX_DIST :: 70
-EXT_ROPE_MAX_DIST :: 300
 ENEMY_RADIUS :: 10
-ENEMY_COLOR :: rl.RED
 ENEMY_SPEED :: 0.5
 TETHER_RADIUS :: 10
 MIN_ZOOM :: 0.5
@@ -37,6 +33,11 @@ mat :: distinct matrix[2, 2]f32
 RopePoint :: struct {
 	pos:      rl.Vector2,
 	prev_pos: rl.Vector2,
+}
+
+Attributes :: struct {
+    ext_rope_length: int,
+    speed: int,
 }
 
 Enemy :: struct {
@@ -64,15 +65,14 @@ Point :: struct {
 }
 
 Store :: struct {
-    is_open:               bool,
-    money:                 int,
-    camera_zoom_upgrade:   int,
-    camera_speed_upgrade:  int,
-    red_point_cost:        int,
-    green_point_cost:      int,
-    blue_point_cost:       int,
-    zoom_upgrade_cost:     int,
-    speed_upgrade_cost:    int,
+    is_open:             bool,
+    money:               int,
+    attributes:          Attributes,
+    extend_rope_cost:    int,
+    increase_speed_cost: int,
+    red_point_value:     int,
+    green_point_value:   int,
+    blue_point_value:    int,
 }
 
 store: Store
@@ -124,7 +124,8 @@ handle_input :: proc(
 	rightClicking: ^bool,
 	enemies: ^[dynamic]Enemy,
     camera: ^rl.Camera2D,
-    score: ^Score
+    score: ^Score,
+    attributes: ^Attributes,
 ) {
 	direction := rl.Vector2{0, 0}
 	if rl.IsKeyDown(.W) {direction.y -= 1}
@@ -151,7 +152,7 @@ handle_input :: proc(
 
 	if direction.x != 0 || direction.y != 0 {
 		length := rl.Vector2Length(direction)
-		direction = direction * (PLAYER_SPEED / length)
+		direction = direction * (f32(attributes.speed) / length)
 	}
 
 	player_targ.x += direction.x
@@ -164,6 +165,16 @@ handle_input :: proc(
     if store.is_open {
         if rl.IsKeyPressed(.ENTER) {
             sell_points(score)
+        }
+        if rl.IsKeyPressed(.ONE) && store.money > store.extend_rope_cost {
+            attributes.ext_rope_length += 1
+            store.money -= store.extend_rope_cost
+            store.extend_rope_cost += (store.extend_rope_cost / 1)
+        }
+        if rl.IsKeyPressed(.TWO) && store.money > store.increase_speed_cost {
+            attributes.speed += 1
+            store.money -= store.increase_speed_cost
+            store.increase_speed_cost += (store.increase_speed_cost / 1)
         }
     }
 
@@ -180,6 +191,7 @@ update_tether :: proc(
     leftClicking: ^bool,
     max_dist: int,
     camera: rl.Camera2D,
+    attributes: Attributes
 ) {
     mouse_pos := rl.GetMousePosition()
     world_mouse_position := rl.GetScreenToWorld2D(mouse_pos, camera)
@@ -198,13 +210,12 @@ update_tether :: proc(
     tether_pos^ += (desired_tether_pos - tether_pos^) / TETHER_LERP_FACTOR
 
     // Update rope length based on clicking state
-    if leftClicking^ && (len(rope^) < EXT_ROPE_LENGTH) {
+    if leftClicking^ && (len(rope^) < attributes.ext_rope_length) {
         runtime.append_elem(rope, RopePoint{tether_pos^, tether_pos^})
     } else if !leftClicking^ && len(rope^) > REST_ROPE_LENGTH {
         ordered_remove(rope, len(rope^) - 1)
     }
-
-    // Update the last rope segment to match the tether position
+   // Update the last rope segment to match the tether position
     if len(rope^) > 0 {
         rope^[len(rope^) - 1].pos = tether_pos^
     }
@@ -492,23 +503,6 @@ sell_points :: proc(score: ^Score) {
     score.blue = 0
 }
 
-purchase_zoom_upgrade :: proc() -> bool {
-    if store.money >= UPGRADE_COST {
-        store.money -= UPGRADE_COST
-        store.camera_zoom_upgrade += 1
-        return true
-    }
-    return false
-}
-
-purchase_speed_upgrade :: proc() -> bool {
-    if store.money >= UPGRADE_COST {
-        store.money -= UPGRADE_COST
-        store.camera_speed_upgrade += 1
-        return true
-    }
-    return false
-}
 
 count_enemies_in_box :: proc(box: CollisionBox, enemies: [dynamic]Enemy) -> int {
     count := 0
@@ -663,7 +657,7 @@ draw_scene :: proc(
 
     if store.is_open {
         menu_width := i32(300)
-        menu_height := i32(200)
+        menu_height := i32(300)
 
         // Calculate the position to center the menu on the screen
         menu_x := i32(camera.target.x - (f32(menu_width) / 2))
@@ -673,14 +667,16 @@ draw_scene :: proc(
         rl.DrawRectangleLines(menu_x, menu_y, menu_width, menu_height, rl.WHITE)
 
         rl.DrawText("Store Menu", menu_x + 10, menu_y + 10, 20, rl.WHITE)
-        rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 160, 20, rl.WHITE)
+        rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 190, 20, rl.WHITE)
         rl.DrawText("Red Point ($10)", menu_x + 10, menu_y + 40, 20, rl.RED)
         rl.DrawText("Green Point ($10)", menu_x + 10, menu_y + 70, 20, rl.GREEN)
         rl.DrawText("Blue Point ($10)", menu_x + 10, menu_y + 100, 20, rl.BLUE)
-        rl.DrawText("Money: ", menu_x + 10, menu_y + 130, 20, rl.WHITE)
-
-        money_str := fmt.tprintf("%d", store.money)
-        rl.DrawText(cstring(raw_data(money_str)), menu_x + 120, menu_y + 130, 20, rl.YELLOW)
+        rl.DrawText("1: Extend Rope", menu_x + 10, menu_y + 130, 20, rl.BLUE)
+        ext_rope_cost_str := fmt.tprintf("(${})", store.extend_rope_cost)
+        rl.DrawText(cstring(raw_data(ext_rope_cost_str)), menu_x + 170, menu_y + 130, 20, rl.YELLOW)
+        rl.DrawText("2: Increase Speed", menu_x + 10, menu_y + 160, 20, rl.BLUE)
+        inc_speed_cost_speed := fmt.tprintf("(${})", store.increase_speed_cost)
+        rl.DrawText(cstring(raw_data(inc_speed_cost_speed)), menu_x + 210, menu_y + 160, 20, rl.YELLOW)
     }
 
 
@@ -702,6 +698,11 @@ main :: proc() {
 	max_dist := ROPE_MAX_DIST
 
 	rope_length := REST_ROPE_LENGTH
+
+    attributes := Attributes{
+        ext_rope_length =  10,
+        speed = 4
+    }
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
 	rest_length := REST_LENGTH
@@ -734,13 +735,12 @@ main :: proc() {
     store = Store{
         is_open = false,
         money = 0,
-        camera_zoom_upgrade = 0,
-        camera_speed_upgrade = 0,
-        red_point_cost = 10,
-        green_point_cost = 10,
-        blue_point_cost = 10,
-        zoom_upgrade_cost = 100,
-        speed_upgrade_cost = 100,
+        attributes = attributes,
+        extend_rope_cost = 10,
+        increase_speed_cost = 10,
+        red_point_value = 10,
+        green_point_value = 10,
+        blue_point_value = 10,
     }
 
 	for !rl.WindowShouldClose() {
@@ -750,17 +750,17 @@ main :: proc() {
 		if !pause {
 			if leftClicking {
 				rest_length = EXT_REST_LENGTH
-				max_dist = EXT_ROPE_MAX_DIST
+				max_dist = attributes.ext_rope_length * 16
 			} else {
 				rest_length = REST_LENGTH
 				max_dist = ROPE_MAX_DIST
 			}
 
             box_corner1, box_corner2, is_drawing_box = createBox(&rightClicking, &boxes, &camera)
-			handle_input(&player_targ, &leftClicking, &rightClicking, &enemies, &camera, &score)
+			handle_input(&player_targ, &leftClicking, &rightClicking, &enemies, &camera, &score, &attributes)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
-			update_tether(&rope, &ball_pos, &tether_pos, &leftClicking, max_dist, camera)
+			update_tether(&rope, &ball_pos, &tether_pos, &leftClicking, max_dist, camera, attributes)
 			update_enemies(&enemies) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, rope, &enemies, &boxes)
             update_box_colors(&boxes, enemies)
