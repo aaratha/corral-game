@@ -55,6 +55,11 @@ CollisionBox :: struct {
 	last_point_spawn_time: f64,
 }
 
+Item :: distinct union {
+    CollisionBox,
+    // Add any other types you want to be placeable here
+}
+
 Score :: struct {
 	red:   int,
 	green: int,
@@ -307,6 +312,20 @@ placeBox :: proc(
             rl.WHITE,
             rl.GetTime()
         })
+    }
+}
+
+placeItem :: proc(
+    item: ^Item,
+    boxes: ^[dynamic]CollisionBox,
+    camera: ^rl.Camera2D,
+) {
+    if item != nil {
+        switch type in item {
+        case CollisionBox:
+            placeBox(boxes, camera)
+            // Add cases for any other placeable item types
+        }
     }
 }
 
@@ -754,6 +773,14 @@ main :: proc() {
 
 	score := Score{0, 0, 0}
 
+    box := CollisionBox{
+        pos = {0, 0},
+        size = 100,
+        color = rl.WHITE,
+        last_point_spawn_time = 0.0,
+    }
+    item: Item = box
+
 	pause := true
 	framesCounter := 0
 
@@ -813,7 +840,7 @@ main :: proc() {
 				camera,
 				attributes,
 			)
-            placeBox(&boxes, &camera)
+            placeItem(&item, &boxes, &camera)
 			update_enemies(&enemies) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, rope, &enemies, &boxes)
 			update_box_colors(&boxes, enemies)
