@@ -22,8 +22,8 @@ REST_ROPE_LENGTH :: 8
 REST_LENGTH :: 1
 EXT_REST_LENGTH :: 5
 ROPE_MAX_DIST :: 70
-ENEMY_RADIUS :: 10
-ENEMY_SPEED :: 0.5
+ANIMAL_RADIUS :: 10
+ANIMAL_SPEED :: 0.5
 TETHER_RADIUS :: 10
 MIN_ZOOM :: 0.5
 MAX_ZOOM :: 2
@@ -42,7 +42,7 @@ Attributes :: struct {
     box_size:        int,
 }
 
-Enemy :: struct {
+Animal :: struct {
 	pos:      rl.Vector2,
 	prev_pos: rl.Vector2,
 	color:    rl.Color,
@@ -88,7 +88,7 @@ store: Store
 POINT_VALUE :: 10 // Each point is worth 10 money
 UPGRADE_COST :: 100 // Each upgrade costs 100 money
 
-verlet_integrate :: proc(object: ^$T, dt: f32) where T == RopePoint || T == Enemy {
+verlet_integrate :: proc(object: ^$T, dt: f32) where T == RopePoint || T == Animal {
 	temp := object.pos
 	velocity := object.pos - object.prev_pos
 	velocity = velocity * FRICTION
@@ -130,7 +130,7 @@ handle_input :: proc(
 	player_targ: ^rl.Vector2,
 	leftClicking: ^bool,
 	rightClicking: ^bool,
-	enemies: ^[dynamic]Enemy,
+	animals: ^[dynamic]Animal,
 	camera: ^rl.Camera2D,
 	score: ^Score,
 	attributes: ^Attributes,
@@ -145,10 +145,10 @@ handle_input :: proc(
 	if rl.IsKeyDown(.SPACE) {
 		mouse_pos := rl.GetMousePosition()
 		world_mouse_pos := rl.GetScreenToWorld2D(mouse_pos, camera^)
-		for i := 0; i < len(enemies); i += 1 {
-			if rl.Vector2Distance(enemies[i].pos, world_mouse_pos) <= ENEMY_RADIUS {
-				ordered_remove(enemies, i)
-				break // Only remove one enemy per space press
+		for i := 0; i < len(animals); i += 1 {
+			if rl.Vector2Distance(animals[i].pos, world_mouse_pos) <= ANIMAL_RADIUS {
+				ordered_remove(animals, i)
+				break // Only remove one animal per space press
 			}
 		}
 	}
@@ -245,7 +245,7 @@ random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
 	camera_top := camera.target.y - camera.offset.y / camera.zoom
 	camera_bottom := camera.target.y + (f32(SCREEN_HEIGHT) - camera.offset.y) / camera.zoom
 
-	// Add a buffer to ensure enemies spawn well outside the view
+	// Add a buffer to ensure animals spawn well outside the view
 	buffer := f32(100)
 
 	// Generate a random position outside the camera's view
@@ -253,23 +253,23 @@ random_outside_position :: proc(camera: rl.Camera2D) -> rl.Vector2 {
 	if rl.GetRandomValue(0, 1) == 0 {
 		// Spawn on left or right side
 		x_pos =
-			rl.GetRandomValue(0, 1) == 0 ? camera_left - ENEMY_RADIUS - buffer : camera_right + ENEMY_RADIUS + buffer
+			rl.GetRandomValue(0, 1) == 0 ? camera_left - ANIMAL_RADIUS - buffer : camera_right + ANIMAL_RADIUS + buffer
 		y_pos = f32(
-			rl.GetRandomValue(i32(camera_top - ENEMY_RADIUS), i32(camera_bottom + ENEMY_RADIUS)),
+			rl.GetRandomValue(i32(camera_top - ANIMAL_RADIUS), i32(camera_bottom + ANIMAL_RADIUS)),
 		)
 	} else {
 		// Spawn on top or bottom side
 		x_pos = f32(
-			rl.GetRandomValue(i32(camera_left - ENEMY_RADIUS), i32(camera_right + ENEMY_RADIUS)),
+			rl.GetRandomValue(i32(camera_left - ANIMAL_RADIUS), i32(camera_right + ANIMAL_RADIUS)),
 		)
 		y_pos =
-			rl.GetRandomValue(0, 1) == 0 ? camera_top - ENEMY_RADIUS - buffer : camera_bottom + ENEMY_RADIUS + buffer
+			rl.GetRandomValue(0, 1) == 0 ? camera_top - ANIMAL_RADIUS - buffer : camera_bottom + ANIMAL_RADIUS + buffer
 	}
 
 	return rl.Vector2{x_pos, y_pos}
 }
 
-spawn_enemy :: proc(enemies: ^[dynamic]Enemy, camera: rl.Camera2D) {
+spawn_animal :: proc(animals: ^[dynamic]Animal, camera: rl.Camera2D) {
 	spawn_pos := random_outside_position(camera)
 
 	// Array of three colors to choose from
@@ -278,20 +278,20 @@ spawn_enemy :: proc(enemies: ^[dynamic]Enemy, camera: rl.Camera2D) {
 	// Randomly select one of the three colors
 	random_color := colors[rl.GetRandomValue(0, 2)]
 
-	append(enemies, Enemy{pos = spawn_pos, prev_pos = spawn_pos, color = random_color})
+	append(animals, Animal{pos = spawn_pos, prev_pos = spawn_pos, color = random_color})
 }
 
-update_enemies :: proc(enemies: ^[dynamic]Enemy) {
-	for &enemy in enemies {
+update_animals :: proc(animals: ^[dynamic]Animal) {
+	for &animal in animals {
 		// Generate a random direction
 		angle := f32(rl.GetRandomValue(0, 359)) * math.PI / 180.0
 		direction := rl.Vector2{math.cos_f32(angle), math.sin_f32(angle)}
 
-		// Move the enemy in the random direction
-		enemy.pos += direction * ENEMY_SPEED
+		// Move the animal in the random direction
+		animal.pos += direction * ANIMAL_SPEED
 
 		// Apply verlet integration
-		verlet_integrate(&enemy, 1.0 / 60.0)
+		verlet_integrate(&animal, 1.0 / 60.0)
 	}
 }
 
@@ -332,64 +332,64 @@ placeItem :: proc(
 solve_collisions :: proc(
 	ball_pos: ^rl.Vector2,
 	rope: [dynamic]RopePoint,
-	enemies: ^[dynamic]Enemy,
+	animals: ^[dynamic]Animal,
 	boxes: ^[dynamic]CollisionBox,
 ) {
-	// Ball vs Enemies
-	for i := 0; i < len(enemies); i += 1 {
-		dir := ball_pos^ - enemies[i].pos
+	// Ball vs Animals
+	for i := 0; i < len(animals); i += 1 {
+		dir := ball_pos^ - animals[i].pos
 		distance := rl.Vector2Length(dir)
-		min_dist := f32(PLAYER_RADIUS + ENEMY_RADIUS)
+		min_dist := f32(PLAYER_RADIUS + ANIMAL_RADIUS)
 		if distance < min_dist {
 			normal := rl.Vector2Normalize(dir)
 			depth := min_dist - distance
 			ball_pos^ = ball_pos^ + (normal * depth * 0.5)
-			enemies[i].pos = enemies[i].pos - (normal * depth * 0.5)
+			animals[i].pos = animals[i].pos - (normal * depth * 0.5)
 		}
 	}
 
-	// Rope segments vs Enemies
+	// Rope segments vs Animals
 	for i := 0; i < len(rope); i += 1 {
-		for j := 0; j < len(enemies); j += 1 {
-			dir := rope[i].pos - enemies[j].pos
+		for j := 0; j < len(animals); j += 1 {
+			dir := rope[i].pos - animals[j].pos
 			distance := rl.Vector2Length(dir)
-			min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS)
+			min_dist := f32(TETHER_RADIUS + ANIMAL_RADIUS)
 
 			if distance < min_dist {
 				normal := rl.Vector2Normalize(dir)
 				depth := min_dist - distance
 				rope[i].pos = rope[i].pos + (normal * depth * 0.5)
-				enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
+				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
 
 			}
 		}
 	}
 
-	// Enemies vs Enemies
-	for i := 0; i < len(enemies) - 1; i += 1 {
-		for j := i + 1; j < len(enemies); j += 1 {
-			dir := enemies[i].pos - enemies[j].pos
+	// Animals vs Animals
+	for i := 0; i < len(animals) - 1; i += 1 {
+		for j := i + 1; j < len(animals); j += 1 {
+			dir := animals[i].pos - animals[j].pos
 			distance := rl.Vector2Length(dir)
-			min_dist := f32(ENEMY_RADIUS * 2)
+			min_dist := f32(ANIMAL_RADIUS * 2)
 
 			if distance < min_dist {
 				normal := rl.Vector2Normalize(dir)
 				depth := min_dist - distance
-				enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
-				enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
+				animals[i].pos = animals[i].pos + (normal * depth * 0.5)
+				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
 			}
 		}
 	}
 
-	// Enemies vs Box walls
-	if enemies == nil || boxes == nil {
+	// Animals vs Box walls
+	if animals == nil || boxes == nil {
 		return
 	}
 
 	BOX_INFLUENCE_DISTANCE :: 10.0 // Distance from box edge where collisions are checked
 
-	// Enemies vs Boxes
-	for &enemy in enemies {
+	// Animals vs Boxes
+	for &animal in animals {
 		for box in boxes {
 			// Calculate box boundaries
             left := min(box.pos.x, box.pos.x + f32(box.size))
@@ -397,51 +397,51 @@ solve_collisions :: proc(
             top := min(box.pos.y, box.pos.y + f32(box.size))
             bottom := max(box.pos.y, box.pos.y + f32(box.size))
 
-			// Check if enemy is within the influence distance of the box
-			if enemy.pos.x >= left - BOX_INFLUENCE_DISTANCE &&
-			   enemy.pos.x <= right + BOX_INFLUENCE_DISTANCE &&
-			   enemy.pos.y >= top - BOX_INFLUENCE_DISTANCE &&
-			   enemy.pos.y <= bottom + BOX_INFLUENCE_DISTANCE {
+			// Check if animal is within the influence distance of the box
+			if animal.pos.x >= left - BOX_INFLUENCE_DISTANCE &&
+			   animal.pos.x <= right + BOX_INFLUENCE_DISTANCE &&
+			   animal.pos.y >= top - BOX_INFLUENCE_DISTANCE &&
+			   animal.pos.y <= bottom + BOX_INFLUENCE_DISTANCE {
 
 				// Check collision with left and right walls
-				if enemy.pos.x - ENEMY_RADIUS < left {
-					enemy.pos.x = left + ENEMY_RADIUS
-					enemy.prev_pos.x = enemy.pos.x // Prevent sticking
-				} else if enemy.pos.x + ENEMY_RADIUS > right {
-					enemy.pos.x = right - ENEMY_RADIUS
-					enemy.prev_pos.x = enemy.pos.x // Prevent sticking
+				if animal.pos.x - ANIMAL_RADIUS < left {
+					animal.pos.x = left + ANIMAL_RADIUS
+					animal.prev_pos.x = animal.pos.x // Prevent sticking
+				} else if animal.pos.x + ANIMAL_RADIUS > right {
+					animal.pos.x = right - ANIMAL_RADIUS
+					animal.prev_pos.x = animal.pos.x // Prevent sticking
 				}
 
 				// Check collision with top and bottom walls
-				if enemy.pos.y - ENEMY_RADIUS < top {
-					enemy.pos.y = top + ENEMY_RADIUS
-					enemy.prev_pos.y = enemy.pos.y // Prevent sticking
-				} else if enemy.pos.y + ENEMY_RADIUS > bottom {
-					enemy.pos.y = bottom - ENEMY_RADIUS
-					enemy.prev_pos.y = enemy.pos.y // Prevent sticking
+				if animal.pos.y - ANIMAL_RADIUS < top {
+					animal.pos.y = top + ANIMAL_RADIUS
+					animal.prev_pos.y = animal.pos.y // Prevent sticking
+				} else if animal.pos.y + ANIMAL_RADIUS > bottom {
+					animal.pos.y = bottom - ANIMAL_RADIUS
+					animal.prev_pos.y = animal.pos.y // Prevent sticking
 				}
 			}
 		}
 	}
 }
 
-update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, enemies: [dynamic]Enemy) {
+update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Animal) {
 	for &box in boxes {
-		enemies_in_box := make([dynamic]Enemy)
-		defer delete(enemies_in_box)
+		animals_in_box := make([dynamic]Animal)
+		defer delete(animals_in_box)
 
-		for enemy in enemies {
-			if is_point_inside_box(enemy.pos, box) {
-				append(&enemies_in_box, enemy)
+		for animal in animals {
+			if is_point_inside_box(animal.pos, box) {
+				append(&animals_in_box, animal)
 			}
 		}
 
-		if len(enemies_in_box) > 0 {
+		if len(animals_in_box) > 0 {
 			all_same_color := true
-			first_color := enemies_in_box[0].color
+			first_color := animals_in_box[0].color
 
-			for i := 1; i < len(enemies_in_box); i += 1 {
-				if enemies_in_box[i].color != first_color {
+			for i := 1; i < len(animals_in_box); i += 1 {
+				if animals_in_box[i].color != first_color {
 					all_same_color = false
 					break
 				}
@@ -460,7 +460,7 @@ update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, enemies: [dynamic]Enemy
 
 spawn_points :: proc(
 	boxes: ^[dynamic]CollisionBox,
-	enemies: [dynamic]Enemy,
+	animals: [dynamic]Animal,
 	points: ^[dynamic]Point,
 ) {
 	POINT_SPAWN_INTERVAL :: 5 // Spawn interval in seconds
@@ -473,13 +473,13 @@ spawn_points :: proc(
 			continue // Skip white boxes
 		}
 
-		enemies_in_box := count_enemies_in_box(box, enemies)
-		if enemies_in_box == 0 {
-			continue // Skip boxes with no enemies
+		animals_in_box := count_animals_in_box(box, animals)
+		if animals_in_box == 0 {
+			continue // Skip boxes with no animals
 		}
 
 		if current_time - box.last_point_spawn_time >= POINT_SPAWN_INTERVAL {
-			for i in 0 ..< enemies_in_box {
+			for i in 0 ..< animals_in_box {
 				new_point := Point {
 					pos   = random_position_in_box(box),
 					color = box.color,
@@ -532,10 +532,10 @@ sell_points :: proc(score: ^Score) {
 }
 
 
-count_enemies_in_box :: proc(box: CollisionBox, enemies: [dynamic]Enemy) -> int {
+count_animals_in_box :: proc(box: CollisionBox, animals: [dynamic]Animal) -> int {
 	count := 0
-	for enemy in enemies {
-		if is_point_inside_box(enemy.pos, box) {
+	for animal in animals {
+		if is_point_inside_box(animal.pos, box) {
 			count += 1
 		}
 	}
@@ -560,7 +560,7 @@ ordered_remove :: proc(
 	arr: ^$T,
 	index: int,
 ) where T == [dynamic]RopePoint ||
-	T == [dynamic]Enemy ||
+	T == [dynamic]Animal ||
 	T == [dynamic]Point {
 	if index < 0 || index >= len(arr^) {
 		return
@@ -592,7 +592,7 @@ draw_scene :: proc(
 	rope_length: int,
 	pause: bool,
 	framesCounter: int,
-	enemies: [dynamic]Enemy,
+	animals: [dynamic]Animal,
 	score: Score,
 	rightClicking: ^bool,
 	boxes: [dynamic]CollisionBox,
@@ -616,8 +616,8 @@ draw_scene :: proc(
 		}
 	}
 
-	for enemy in enemies {
-		rl.DrawCircle(i32(enemy.pos.x), i32(enemy.pos.y), ENEMY_RADIUS, enemy.color)
+	for animal in animals {
+		rl.DrawCircle(i32(animal.pos.x), i32(animal.pos.y), ANIMAL_RADIUS, animal.color)
 	}
 
 	// Calculate corner positions relative to the camera view
@@ -640,21 +640,21 @@ draw_scene :: proc(
 	)
 
 	// Update this part in the draw_scene function
-	rl.DrawText("SCORE: ", i32(top_right.x) - 180, i32(top_right.y) + 10, 20, rl.WHITE)
+	rl.DrawText("SCORE: ", i32(top_right.x) - 250, i32(top_right.y) + 10, 20, rl.WHITE)
 
 	// Draw each score in its respective color
 	red_score_str := fmt.tprintf("{}", score.red)
 	green_score_str := fmt.tprintf("{}", score.green)
 	blue_score_str := fmt.tprintf("{}", score.blue)
 
-	x_offset := i32(top_right.x) - 95
+	x_offset := i32(top_right.x) - 170
 	y_pos := i32(top_right.y) + 10
 
 	rl.DrawText(cstring(raw_data(red_score_str)), x_offset, y_pos, 20, rl.RED)
-	x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 10
+	x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 8
 
 	rl.DrawText(cstring(raw_data(green_score_str)), x_offset, y_pos, 20, rl.GREEN)
-	x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 10
+	x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 8
 
 	rl.DrawText(cstring(raw_data(blue_score_str)), x_offset, y_pos, 20, rl.BLUE)
 
@@ -765,7 +765,7 @@ main :: proc() {
 	rope := make([dynamic]RopePoint, rope_length)
 	initialize_rope(rope, rope_length, anchor)
 
-	enemies := make([dynamic]Enemy, 0)
+	animals := make([dynamic]Animal, 0)
 
 	boxes := make([dynamic]CollisionBox, 0)
 
@@ -823,7 +823,7 @@ main :: proc() {
 				&player_targ,
 				&leftClicking,
 				&rightClicking,
-				&enemies,
+				&animals,
 				&camera,
 				&score,
 				&attributes,
@@ -841,16 +841,16 @@ main :: proc() {
 				attributes,
 			)
             placeItem(&item, &boxes, &camera)
-			update_enemies(&enemies) // Update enemies to move towards the player
-			solve_collisions(&ball_pos, rope, &enemies, &boxes)
-			update_box_colors(&boxes, enemies)
-			spawn_points(&boxes, enemies, &points)
+			update_animals(&animals) // Update animals to move towards the player
+			solve_collisions(&ball_pos, rope, &animals, &boxes)
+			update_box_colors(&boxes, animals)
+			spawn_points(&boxes, animals, &points)
 			collect_points(rope, &points, &score)
 			rope[len(rope) - 1].pos += (tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
 
-			// Spawn enemies periodically
+			// Spawn animals periodically
 			if rl.GetTime() - lastSpawnTime > spawnInterval {
-				spawn_enemy(&enemies, camera)
+				spawn_animal(&animals, camera)
 				lastSpawnTime = rl.GetTime()
 			}
 			cameraTarget += (ball_pos - cameraTarget) / CAMERA_LERP_FACTOR
@@ -870,7 +870,7 @@ main :: proc() {
 			len(rope),
 			pause,
 			framesCounter,
-			enemies,
+			animals,
 			score,
 			&rightClicking,
 			boxes,
