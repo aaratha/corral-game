@@ -603,10 +603,10 @@ draw_scene :: proc(
     top_right := rl.Vector2{top_left.x + screen_width / camera.zoom, top_left.y}
 
     // Draw UI elements
-    rl.DrawText("PRESS SPACE to PAUSE BALL MOVEMENT", i32(bottom_left.x) + 10, i32(bottom_left.y) - 25, 20, FG_COLOR)
-    rl.DrawText("FPS: ", i32(top_left.x) + 10, i32(top_left.y) + 10, 20, FG_COLOR)
-    fps_str := fmt.tprintf("%d", rl.GetFPS())
-    rl.DrawText(cstring(raw_data(fps_str)), i32(top_left.x) + 60, i32(top_left.y) + 10, 20, FG_COLOR)
+    rl.DrawText("PAUSE: TAB", i32(bottom_left.x) + 10, i32(bottom_left.y) - 25, 20, rl.GOLD)
+    rl.DrawText("MONEY:", i32(top_left.x) + 10, i32(top_left.y) + 10, 20, rl.GOLD)
+    fps_str := fmt.tprintf("%d", store.money)
+    rl.DrawText(cstring(raw_data(fps_str)), i32(top_left.x) + 100, i32(top_left.y) + 10, 20, rl.GOLD)
 
 // Update this part in the draw_scene function
     rl.DrawText("SCORE: ", i32(top_right.x) - 150, i32(top_right.y) + 10, 20, rl.WHITE)
