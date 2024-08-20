@@ -609,21 +609,21 @@ draw_scene :: proc(
     rl.DrawText(cstring(raw_data(fps_str)), i32(top_left.x) + 100, i32(top_left.y) + 10, 20, rl.GOLD)
 
 // Update this part in the draw_scene function
-    rl.DrawText("SCORE: ", i32(top_right.x) - 150, i32(top_right.y) + 10, 20, rl.WHITE)
+    rl.DrawText("SCORE: ", i32(top_right.x) - 180, i32(top_right.y) + 10, 20, rl.WHITE)
 
     // Draw each score in its respective color
     red_score_str := fmt.tprintf("{}", score.red)
     green_score_str := fmt.tprintf("{}", score.green)
     blue_score_str := fmt.tprintf("{}", score.blue)
 
-    x_offset := i32(top_right.x) - 70
+    x_offset := i32(top_right.x) - 95
     y_pos := i32(top_right.y) + 10
 
     rl.DrawText(cstring(raw_data(red_score_str)), x_offset, y_pos, 20, rl.RED)
-    x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 5
+    x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 10
 
     rl.DrawText(cstring(raw_data(green_score_str)), x_offset, y_pos, 20, rl.GREEN)
-    x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 5
+    x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 10
 
     rl.DrawText(cstring(raw_data(blue_score_str)), x_offset, y_pos, 20, rl.BLUE)
 
