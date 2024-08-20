@@ -38,7 +38,8 @@ RopePoint :: struct {
 
 Attributes :: struct {
 	ext_rope_length: int,
-	speed:           int,
+	speed:           f32,
+    box_size:        int,
 }
 
 Enemy :: struct {
@@ -48,8 +49,8 @@ Enemy :: struct {
 }
 
 CollisionBox :: struct {
-	corner1:               rl.Vector2,
-	corner2:               rl.Vector2,
+    pos: rl.Vector2,
+    size: int,
 	color:                 rl.Color,
 	last_point_spawn_time: f64,
 }
@@ -71,6 +72,7 @@ Store :: struct {
 	attributes:          Attributes,
 	extend_rope_cost:    int,
 	increase_speed_cost: int,
+	increase_size_cost:  int,
 	red_point_value:     int,
 	green_point_value:   int,
 	blue_point_value:    int,
@@ -127,6 +129,7 @@ handle_input :: proc(
 	camera: ^rl.Camera2D,
 	score: ^Score,
 	attributes: ^Attributes,
+    boxes: ^[dynamic]CollisionBox,
 ) {
 	direction := rl.Vector2{0, 0}
 	if rl.IsKeyDown(.W) {direction.y -= 1}
@@ -173,9 +176,17 @@ handle_input :: proc(
 			store.extend_rope_cost += (store.extend_rope_cost / 1)
 		}
 		if rl.IsKeyPressed(.TWO) && store.money > store.increase_speed_cost {
-			attributes.speed += 1
+			attributes.speed += 0.7
 			store.money -= store.increase_speed_cost
 			store.increase_speed_cost += (store.increase_speed_cost / 1)
+		}
+		if rl.IsKeyPressed(.THREE) && store.money > store.increase_size_cost {
+			attributes.box_size += 20
+            for &box in boxes {
+                box.size = attributes.box_size
+            }
+			store.money -= store.increase_size_cost
+			store.increase_size_cost += (store.increase_size_cost / 1)
 		}
 	}
 
@@ -282,31 +293,21 @@ update_enemies :: proc(enemies: ^[dynamic]Enemy) {
 // Declare this at the top level of your file, outside any function
 box_corner1: rl.Vector2
 
-createBox :: proc(
-	rightClicking: ^bool,
-	boxes: ^[dynamic]CollisionBox,
+placeBox :: proc(
+    boxes: ^[dynamic]CollisionBox,
 	camera: ^rl.Camera2D,
-) -> (
-	rl.Vector2,
-	rl.Vector2,
-	bool,
 ) {
-	mouse_pos := rl.GetMousePosition()
+    mouse_pos := rl.GetMousePosition()
 	world_mouse_position := rl.GetScreenToWorld2D(mouse_pos, camera^)
 
-	is_drawing := rl.IsMouseButtonDown(.RIGHT)
-	corner2 := world_mouse_position
-
-	if rl.IsMouseButtonPressed(.RIGHT) {
-		box_corner1 = world_mouse_position
-	}
-
-	if rl.IsMouseButtonReleased(.RIGHT) {
-		// Add the new box to the boxes array
-		append(boxes, CollisionBox{box_corner1, corner2, rl.WHITE, rl.GetTime()})
-	}
-
-	return box_corner1, corner2, is_drawing
+    if rl.IsMouseButtonPressed(.RIGHT) {
+        append(boxes, CollisionBox{
+            world_mouse_position - rl.Vector2{50,50},
+            100,
+            rl.WHITE,
+            rl.GetTime()
+        })
+    }
 }
 
 solve_collisions :: proc(
@@ -372,10 +373,10 @@ solve_collisions :: proc(
 	for &enemy in enemies {
 		for box in boxes {
 			// Calculate box boundaries
-			left := min(box.corner1.x, box.corner2.x)
-			right := max(box.corner1.x, box.corner2.x)
-			top := min(box.corner1.y, box.corner2.y)
-			bottom := max(box.corner1.y, box.corner2.y)
+            left := min(box.pos.x, box.pos.x + f32(box.size))
+            right := max(box.pos.x, box.pos.x + f32(box.size))
+            top := min(box.pos.y, box.pos.y + f32(box.size))
+            bottom := max(box.pos.y, box.pos.y + f32(box.size))
 
 			// Check if enemy is within the influence distance of the box
 			if enemy.pos.x >= left - BOX_INFLUENCE_DISTANCE &&
@@ -523,10 +524,10 @@ count_enemies_in_box :: proc(box: CollisionBox, enemies: [dynamic]Enemy) -> int 
 }
 
 random_position_in_box :: proc(box: CollisionBox) -> rl.Vector2 {
-	min_x := min(box.corner1.x, box.corner2.x)
-	max_x := max(box.corner1.x, box.corner2.x)
-	min_y := min(box.corner1.y, box.corner2.y)
-	max_y := max(box.corner1.y, box.corner2.y)
+	min_x := min(box.pos.x, box.pos.x + f32(box.size))
+	max_x := max(box.pos.x, box.pos.x + f32(box.size))
+	min_y := min(box.pos.y, box.pos.y + f32(box.size))
+	max_y := max(box.pos.y, box.pos.y + f32(box.size))
 
 	return rl.Vector2 {
 		f32(rl.GetRandomValue(i32(min_x), i32(max_x))),
@@ -556,10 +557,10 @@ ordered_remove :: proc(
 }
 
 is_point_inside_box :: proc(point: rl.Vector2, box: CollisionBox) -> bool {
-	left := min(box.corner1.x, box.corner2.x)
-	right := max(box.corner1.x, box.corner2.x)
-	top := min(box.corner1.y, box.corner2.y)
-	bottom := max(box.corner1.y, box.corner2.y)
+    left := min(box.pos.x, box.pos.x + f32(box.size))
+    right := max(box.pos.x, box.pos.x + f32(box.size))
+    top := min(box.pos.y, box.pos.y + f32(box.size))
+    bottom := max(box.pos.y, box.pos.y + f32(box.size))
 
 	return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
 }
@@ -575,8 +576,6 @@ draw_scene :: proc(
 	enemies: [dynamic]Enemy,
 	score: Score,
 	rightClicking: ^bool,
-	box_corner1, box_corner2: rl.Vector2,
-	is_drawing_box: bool,
 	boxes: [dynamic]CollisionBox,
 	points: [dynamic]Point,
 	store: Store,
@@ -655,24 +654,15 @@ draw_scene :: proc(
 		rl.DrawText("PAUSED", i32(pause_text_pos.x) - 50, i32(pause_text_pos.y), 30, FG_COLOR)
 	}
 
-	if is_drawing_box {
-		rl.DrawRectangleLines(
-			i32(min(box_corner1.x, box_corner2.x)),
-			i32(min(box_corner1.y, box_corner2.y)),
-			i32(abs(box_corner2.x - box_corner1.x)),
-			i32(abs(box_corner2.y - box_corner1.y)),
-			rl.WHITE,
-		)
-	}
 
 	for box in boxes {
-		rl.DrawRectangleLines(
-			i32(min(box.corner1.x, box.corner2.x)),
-			i32(min(box.corner1.y, box.corner2.y)),
-			i32(abs(box.corner2.x - box.corner1.x)),
-			i32(abs(box.corner2.y - box.corner1.y)),
-			box.color,
-		)
+        rl.DrawRectangleLines(
+            i32(box.pos.x),
+            i32(box.pos.y),
+            i32(box.size),
+            i32(box.size),
+            box.color,
+        )
 	}
 
 	// Draw points
@@ -692,7 +682,7 @@ draw_scene :: proc(
 		rl.DrawRectangleLines(menu_x, menu_y, menu_width, menu_height, rl.WHITE)
 
 		rl.DrawText("Store Menu", menu_x + 10, menu_y + 10, 20, rl.WHITE)
-		rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 190, 20, rl.WHITE)
+		rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 240, 20, rl.WHITE)
 		rl.DrawText("Red Point ($10)", menu_x + 10, menu_y + 40, 20, rl.RED)
 		rl.DrawText("Green Point ($10)", menu_x + 10, menu_y + 70, 20, rl.GREEN)
 		rl.DrawText("Blue Point ($10)", menu_x + 10, menu_y + 100, 20, rl.BLUE)
@@ -711,6 +701,15 @@ draw_scene :: proc(
 			cstring(raw_data(inc_speed_cost_speed)),
 			menu_x + 210,
 			menu_y + 160,
+			20,
+			rl.YELLOW,
+		)
+		rl.DrawText("3: Increase Box Size", menu_x + 10, menu_y + 190, 20, rl.BLUE)
+		inc_size_cost_speed := fmt.tprintf("(${})", store.increase_size_cost)
+		rl.DrawText(
+			cstring(raw_data(inc_size_cost_speed)),
+			menu_x + 230,
+			menu_y + 190,
 			20,
 			rl.YELLOW,
 		)
@@ -739,6 +738,7 @@ main :: proc() {
 	attributes := Attributes {
 		ext_rope_length = 10,
 		speed           = 4,
+        box_size        = 100,
 	}
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
@@ -749,8 +749,6 @@ main :: proc() {
 	enemies := make([dynamic]Enemy, 0)
 
 	boxes := make([dynamic]CollisionBox, 0)
-	box_corner1, box_corner2: rl.Vector2
-	is_drawing_box := false
 
 	points := make([dynamic]Point, 0)
 
@@ -775,6 +773,7 @@ main :: proc() {
 		attributes          = attributes,
 		extend_rope_cost    = 10,
 		increase_speed_cost = 10,
+		increase_size_cost  = 100,
 		red_point_value     = 10,
 		green_point_value   = 10,
 		blue_point_value    = 10,
@@ -793,7 +792,6 @@ main :: proc() {
 				max_dist = ROPE_MAX_DIST
 			}
 
-			box_corner1, box_corner2, is_drawing_box = createBox(&rightClicking, &boxes, &camera)
 			handle_input(
 				&player_targ,
 				&leftClicking,
@@ -802,6 +800,7 @@ main :: proc() {
 				&camera,
 				&score,
 				&attributes,
+                &boxes,
 			)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
@@ -814,6 +813,7 @@ main :: proc() {
 				camera,
 				attributes,
 			)
+            placeBox(&boxes, &camera)
 			update_enemies(&enemies) // Update enemies to move towards the player
 			solve_collisions(&ball_pos, rope, &enemies, &boxes)
 			update_box_colors(&boxes, enemies)
@@ -846,9 +846,6 @@ main :: proc() {
 			enemies,
 			score,
 			&rightClicking,
-			box_corner1,
-			box_corner2,
-			is_drawing_box,
 			boxes,
 			points,
 			store,
