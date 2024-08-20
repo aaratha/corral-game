@@ -603,7 +603,7 @@ draw_scene :: proc(
     top_right := rl.Vector2{top_left.x + screen_width / camera.zoom, top_left.y}
 
     // Draw UI elements
-    rl.DrawText("PAUSE: TAB", i32(bottom_left.x) + 10, i32(bottom_left.y) - 25, 20, rl.GOLD)
+    rl.DrawText("PAUSE: TAB", i32(bottom_left.x) + 10, i32(bottom_left.y) - 25, 20, FG_COLOR)
     rl.DrawText("MONEY:", i32(top_left.x) + 10, i32(top_left.y) + 10, 20, rl.GOLD)
     fps_str := fmt.tprintf("%d", store.money)
     rl.DrawText(cstring(raw_data(fps_str)), i32(top_left.x) + 100, i32(top_left.y) + 10, 20, rl.GOLD)
