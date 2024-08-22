@@ -355,7 +355,7 @@ placeBox :: proc(boxes: ^[dynamic]CollisionBox, attributes: ^Attributes, camera:
 	mouse_pos := rl.GetMousePosition()
 	world_mouse_position := rl.GetScreenToWorld2D(mouse_pos, camera^)
 
-	if rl.IsMouseButtonDown(.LEFT) == false && rl.IsMouseButtonPressed(.RIGHT) {
+	if rl.IsMouseButtonPressed(.RIGHT) {
 		append(
 			boxes,
 			CollisionBox{world_mouse_position, attributes.box_size, rl.WHITE, rl.GetTime()},
@@ -386,6 +386,7 @@ solve_collisions :: proc(
 	boxes: ^[dynamic]CollisionBox,
 	rightClicking: ^bool,
 ) {
+
 	// Ball vs Animals
 	for i := 0; i < len(animals); i += 1 {
 		dir := ball_pos^ - animals[i].pos
@@ -400,7 +401,7 @@ solve_collisions :: proc(
 	}
 
 	// Rope segments vs Animals
-	if rightClicking^ == false {
+	if rl.IsKeyDown(.LEFT_SHIFT) == false {
 		for i := 0; i < len(rope); i += 1 {
 			for j := 0; j < len(animals); j += 1 {
 				dir := rope[i].pos - animals[j].pos
@@ -412,7 +413,6 @@ solve_collisions :: proc(
 					depth := min_dist - distance
 					rope[i].pos = rope[i].pos + (normal * depth * 0.5)
 					animals[j].pos = animals[j].pos - (normal * depth * 0.5)
-
 				}
 			}
 		}
@@ -704,7 +704,7 @@ draw_scene :: proc(
 	rl.ClearBackground(BG_COLOR)
 	rl.DrawCircleV(ball_pos, ball_rad, player_color)
 
-	if rl.IsMouseButtonDown(.LEFT) && rightClicking^ {
+	if rl.IsKeyDown(.LEFT_SHIFT) {
 		player_color = rl.GRAY
 	}
 
