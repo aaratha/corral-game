@@ -13,7 +13,7 @@ SCREEN_HEIGHT :: 720
 TETHER_LERP_FACTOR :: 6
 PLAYER_LERP_FACTOR :: 6
 CAMERA_LERP_FACTOR :: 6
-FRICTION :: 0.7
+FRICTION :: 0.8
 BG_COLOR :: rl.BLACK
 FG_COLOR :: rl.WHITE
 PLAYER_COLOR :: rl.WHITE
@@ -41,7 +41,7 @@ RopePoint :: struct {
 Attributes :: struct {
 	ext_rope_length: int,
 	speed:           f32,
-    box_size:        int,
+	box_size:        int,
 }
 
 Animal :: struct {
@@ -57,15 +57,15 @@ Enemy :: struct {
 }
 
 CollisionBox :: struct {
-    pos: rl.Vector2,
-    size: int,
+	pos:                   rl.Vector2,
+	size:                  int,
 	color:                 rl.Color,
 	last_point_spawn_time: f64,
 }
 
 Item :: distinct union {
-    CollisionBox,
-    // Add any other types you want to be placeable here
+	CollisionBox,
+	// Add any other types you want to be placeable here
 }
 
 Score :: struct {
@@ -142,7 +142,7 @@ handle_input :: proc(
 	camera: ^rl.Camera2D,
 	score: ^Score,
 	attributes: ^Attributes,
-    boxes: ^[dynamic]CollisionBox,
+	boxes: ^[dynamic]CollisionBox,
 ) {
 	direction := rl.Vector2{0, 0}
 	if rl.IsKeyDown(.W) {direction.y -= 1}
@@ -195,9 +195,9 @@ handle_input :: proc(
 		}
 		if rl.IsKeyPressed(.THREE) && store.money > store.increase_size_cost {
 			attributes.box_size += 20
-            for &box in boxes {
-                box.size = attributes.box_size
-            }
+			for &box in boxes {
+				box.size = attributes.box_size
+			}
 			store.money -= store.increase_size_cost
 			store.increase_size_cost += (store.increase_size_cost / 1)
 		}
@@ -314,74 +314,68 @@ update_animals :: proc(animals: ^[dynamic]Animal) {
 }
 
 update_enemies :: proc(enemies: ^[dynamic]Enemy, boxes: [dynamic]CollisionBox) {
-    for &enemy in enemies {
-        // Check if there are any boxes
-        if len(boxes) == 0 {
-            continue // No boxes to move towards
-        }
+	for &enemy in enemies {
+		// Check if there are any boxes
+		if len(boxes) == 0 {
+			continue // No boxes to move towards
+		}
 
-        // Find the nearest box
-        nearest_box := &boxes[0]
-        min_distance := rl.Vector2Distance(enemy.pos, nearest_box.pos)
+		// Find the nearest box
+		nearest_box := &boxes[0]
+		min_distance := rl.Vector2Distance(enemy.pos, nearest_box.pos)
 
-        for &box in boxes {
-            distance := rl.Vector2Distance(enemy.pos, box.pos)
-            if distance < min_distance {
-                min_distance = distance
-                nearest_box = &box
-            }
-        }
+		for &box in boxes {
+			distance := rl.Vector2Distance(enemy.pos, box.pos)
+			if distance < min_distance {
+				min_distance = distance
+				nearest_box = &box
+			}
+		}
 
-        // Calculate the direction towards the nearest box
-        direction := (nearest_box.pos - enemy.pos) * FRICTION
+		// Calculate the direction towards the nearest box
+		direction := (nearest_box.pos - enemy.pos) * FRICTION
 
-        // Normalize the direction vector (make it unit length)
-        if min_distance > 0 {
-            direction = rl.Vector2Normalize(nearest_box.pos - enemy.pos)
-        }
+		// Normalize the direction vector (make it unit length)
+		if min_distance > 0 {
+			direction = rl.Vector2Normalize(nearest_box.pos - enemy.pos)
+		}
 
-        // Move the enemy towards the nearest box using lerp
+		// Move the enemy towards the nearest box using lerp
 		enemy.pos += direction * ENEMY_SPEED // Adjust speed as necessary
-        //
-        // Apply verlet integration to simulate smooth movement
-        verlet_integrate(&enemy, 1.0 / 60.0)
-    }
+		//
+		// Apply verlet integration to simulate smooth movement
+		verlet_integrate(&enemy, 1.0 / 60.0)
+	}
 }
 
 // Declare this at the top level of your file, outside any function
 box_corner1: rl.Vector2
 
-placeBox :: proc(
-    boxes: ^[dynamic]CollisionBox,
-    attributes: ^Attributes,
-	camera: ^rl.Camera2D,
-) {
-    mouse_pos := rl.GetMousePosition()
+placeBox :: proc(boxes: ^[dynamic]CollisionBox, attributes: ^Attributes, camera: ^rl.Camera2D) {
+	mouse_pos := rl.GetMousePosition()
 	world_mouse_position := rl.GetScreenToWorld2D(mouse_pos, camera^)
 
-    if rl.IsMouseButtonPressed(.RIGHT) {
-        append(boxes, CollisionBox{
-            world_mouse_position,
-            attributes.box_size,
-            rl.WHITE,
-            rl.GetTime()
-        })
-    }
+	if rl.IsMouseButtonDown(.LEFT) == false && rl.IsMouseButtonPressed(.RIGHT) {
+		append(
+			boxes,
+			CollisionBox{world_mouse_position, attributes.box_size, rl.WHITE, rl.GetTime()},
+		)
+	}
 }
 
 placeItem :: proc(
-    item: ^Item,
-    boxes: ^[dynamic]CollisionBox,
-    attributes: ^Attributes,
-    camera: ^rl.Camera2D,
+	item: ^Item,
+	boxes: ^[dynamic]CollisionBox,
+	attributes: ^Attributes,
+	camera: ^rl.Camera2D,
 ) {
-    if item != nil {
-        switch type in item {
-        case CollisionBox:
-            placeBox(boxes, attributes, camera)
-            // Add cases for any other placeable item types
-        }
-    }
+	if item != nil {
+		switch type in item {
+		case CollisionBox:
+			placeBox(boxes, attributes, camera)
+		// Add cases for any other placeable item types
+		}
+	}
 }
 
 solve_collisions :: proc(
@@ -390,6 +384,7 @@ solve_collisions :: proc(
 	animals: ^[dynamic]Animal,
 	enemies: ^[dynamic]Enemy,
 	boxes: ^[dynamic]CollisionBox,
+	rightClicking: ^bool,
 ) {
 	// Ball vs Animals
 	for i := 0; i < len(animals); i += 1 {
@@ -405,18 +400,20 @@ solve_collisions :: proc(
 	}
 
 	// Rope segments vs Animals
-	for i := 0; i < len(rope); i += 1 {
-		for j := 0; j < len(animals); j += 1 {
-			dir := rope[i].pos - animals[j].pos
-			distance := rl.Vector2Length(dir)
-			min_dist := f32(TETHER_RADIUS + ANIMAL_RADIUS)
+	if rightClicking^ == false {
+		for i := 0; i < len(rope); i += 1 {
+			for j := 0; j < len(animals); j += 1 {
+				dir := rope[i].pos - animals[j].pos
+				distance := rl.Vector2Length(dir)
+				min_dist := f32(TETHER_RADIUS + ANIMAL_RADIUS + 4)
 
-			if distance < min_dist {
-				normal := rl.Vector2Normalize(dir)
-				depth := min_dist - distance
-				rope[i].pos = rope[i].pos + (normal * depth * 0.5)
-				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+				if distance < min_dist {
+					normal := rl.Vector2Normalize(dir)
+					depth := min_dist - distance
+					rope[i].pos = rope[i].pos + (normal * depth * 0.5)
+					animals[j].pos = animals[j].pos - (normal * depth * 0.5)
 
+				}
 			}
 		}
 	}
@@ -452,37 +449,37 @@ solve_collisions :: proc(
 		}
 	}
 
-    // Enemies vs Rope Points
-    for i := 0; i < len(rope); i += 1 {
-        for j := 0; j < len(enemies); j += 1 {
-            dir := rope[i].pos - enemies[j].pos
-            distance := rl.Vector2Length(dir)
-            min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS + 4)
+	// Enemies vs Rope Points
+	for i := 0; i < len(rope); i += 1 {
+		for j := 0; j < len(enemies); j += 1 {
+			dir := rope[i].pos - enemies[j].pos
+			distance := rl.Vector2Length(dir)
+			min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS + 4)
 
-            if distance < min_dist {
-                normal := rl.Vector2Normalize(dir)
-                depth := min_dist - distance
-                rope[i].pos = rope[i].pos + (normal * depth * 0.5)
-                enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
-            }
-        }
-    }
+			if distance < min_dist {
+				normal := rl.Vector2Normalize(dir)
+				depth := min_dist - distance
+				rope[i].pos = rope[i].pos + (normal * depth * 0.5)
+				enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
+			}
+		}
+	}
 
-    // Enemies vs Animal s
-    for i := 0; i < len(enemies); i += 1 {
-        for j := 0; j < len(animals); j += 1 {
-            dir := enemies[i].pos - animals[j].pos
-            distance := rl.Vector2Length(dir)
-            min_dist := f32(ENEMY_RADIUS + ANIMAL_RADIUS)
+	// Enemies vs Animal s
+	for i := 0; i < len(enemies); i += 1 {
+		for j := 0; j < len(animals); j += 1 {
+			dir := enemies[i].pos - animals[j].pos
+			distance := rl.Vector2Length(dir)
+			min_dist := f32(ENEMY_RADIUS + ANIMAL_RADIUS)
 
-            if distance < min_dist {
-                normal := rl.Vector2Normalize(dir)
-                depth := min_dist - distance
-                enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
-                animals[j].pos = animals[j].pos - (normal * depth * 0.5)
-            }
-        }
-    }
+			if distance < min_dist {
+				normal := rl.Vector2Normalize(dir)
+				depth := min_dist - distance
+				enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
+				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+			}
+		}
+	}
 
 	// Animals vs Box walls
 	if animals == nil || boxes == nil {
@@ -495,10 +492,10 @@ solve_collisions :: proc(
 	for &animal in animals {
 		for box in boxes {
 			// Calculate box boundaries
-            left := box.pos.x - f32(box.size / 2)
-            right := box.pos.x + f32(box.size / 2)
-            top := box.pos.y - f32(box.size / 2)
-            bottom := box.pos.y + f32(box.size / 2)
+			left := box.pos.x - f32(box.size / 2)
+			right := box.pos.x + f32(box.size / 2)
+			top := box.pos.y - f32(box.size / 2)
+			bottom := box.pos.y + f32(box.size / 2)
 			// Check if animal is within the influence distance of the box
 			if animal.pos.x >= left - BOX_INFLUENCE_DISTANCE &&
 			   animal.pos.x <= right + BOX_INFLUENCE_DISTANCE &&
@@ -524,7 +521,7 @@ solve_collisions :: proc(
 				}
 			}
 		}
-  	}
+	}
 }
 
 update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Animal) {
@@ -644,10 +641,10 @@ count_animals_in_box :: proc(box: CollisionBox, animals: [dynamic]Animal) -> int
 }
 
 random_position_in_box :: proc(box: CollisionBox) -> rl.Vector2 {
-    left := box.pos.x - f32(box.size / 2)
-    right := box.pos.x + f32(box.size / 2)
-    top := box.pos.y - f32(box.size / 2)
-    bottom := box.pos.y + f32(box.size / 2)
+	left := box.pos.x - f32(box.size / 2)
+	right := box.pos.x + f32(box.size / 2)
+	top := box.pos.y - f32(box.size / 2)
+	bottom := box.pos.y + f32(box.size / 2)
 
 	return rl.Vector2 {
 		f32(rl.GetRandomValue(i32(left), i32(right))),
@@ -676,10 +673,10 @@ ordered_remove :: proc(
 }
 
 is_point_inside_box :: proc(point: rl.Vector2, box: CollisionBox) -> bool {
-    left := box.pos.x - f32(box.size / 2)
-    right := box.pos.x + f32(box.size / 2)
-    top := box.pos.y - f32(box.size / 2)
-    bottom := box.pos.y + f32(box.size / 2)
+	left := box.pos.x - f32(box.size / 2)
+	right := box.pos.x + f32(box.size / 2)
+	top := box.pos.y - f32(box.size / 2)
+	bottom := box.pos.y + f32(box.size / 2)
 
 
 	return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
@@ -701,19 +698,24 @@ draw_scene :: proc(
 	points: [dynamic]Point,
 	store: Store,
 ) {
+	player_color := rl.WHITE
 	rl.BeginDrawing()
 	rl.BeginMode2D(camera)
 	rl.ClearBackground(BG_COLOR)
-	rl.DrawCircleV(ball_pos, ball_rad, PLAYER_COLOR)
+	rl.DrawCircleV(ball_pos, ball_rad, player_color)
+
+	if rl.IsMouseButtonDown(.LEFT) && rightClicking^ {
+		player_color = rl.GRAY
+	}
 
 	for i in 0 ..= rope_length - 2 {
-		rl.DrawLineEx(rope[i].pos, rope[i + 1].pos, 3, PLAYER_COLOR)
+		rl.DrawLineEx(rope[i].pos, rope[i + 1].pos, 3, player_color)
 		if i == rope_length - 2 {
 			rl.DrawCircle(
 				i32(rope[i + 1].pos.x),
 				i32(rope[i + 1].pos.y),
 				TETHER_RADIUS,
-				PLAYER_COLOR,
+				player_color,
 			)
 		}
 	}
@@ -781,13 +783,13 @@ draw_scene :: proc(
 
 
 	for box in boxes {
-        rl.DrawRectangleLines(
-            i32(int(box.pos.x) - box.size / 2),
-            i32(int(box.pos.y) - box.size / 2),
-            i32(box.size),
-            i32(box.size),
-            box.color,
-        )
+		rl.DrawRectangleLines(
+			i32(int(box.pos.x) - box.size / 2),
+			i32(int(box.pos.y) - box.size / 2),
+			i32(box.size),
+			i32(box.size),
+			box.color,
+		)
 	}
 
 	// Draw points
@@ -863,7 +865,7 @@ main :: proc() {
 	attributes := Attributes {
 		ext_rope_length = 10,
 		speed           = 4,
-        box_size        = 100,
+		box_size        = 100,
 	}
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
@@ -881,13 +883,13 @@ main :: proc() {
 
 	score := Score{0, 0, 0}
 
-    box := CollisionBox{
-        pos = {0, 0},
-        size = 100,
-        color = rl.WHITE,
-        last_point_spawn_time = 0.0,
-    }
-    item: Item = box
+	box := CollisionBox {
+		pos                   = {0, 0},
+		size                  = 100,
+		color                 = rl.WHITE,
+		last_point_spawn_time = 0.0,
+	}
+	item: Item = box
 
 	pause := true
 	framesCounter := 0
@@ -902,7 +904,7 @@ main :: proc() {
 
 	camera.zoom = 1.0 // Adjust this value for zoom in or out
 
-    rl.SetExitKey(rl.KeyboardKey.KEY_NULL)
+	rl.SetExitKey(rl.KeyboardKey.KEY_NULL)
 
 	store = Store {
 		is_open             = false,
@@ -937,7 +939,7 @@ main :: proc() {
 				&camera,
 				&score,
 				&attributes,
-                &boxes,
+				&boxes,
 			)
 			update_ball_position(&ball_pos, &player_targ)
 			update_rope(rope, ball_pos, f32(rest_length))
@@ -950,10 +952,10 @@ main :: proc() {
 				camera,
 				attributes,
 			)
-            placeItem(&item, &boxes, &attributes, &camera)
+			placeItem(&item, &boxes, &attributes, &camera)
 			update_animals(&animals) // Update animals to move towards the player
 			update_enemies(&enemies, boxes) // Update animals to move towards the player
-			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes)
+			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking)
 			update_box_colors(&boxes, animals)
 			spawn_points(&boxes, animals, &points)
 			collect_points(rope, &points, &score)
@@ -983,7 +985,7 @@ main :: proc() {
 			pause,
 			framesCounter,
 			animals,
-            enemies,
+			enemies,
 			score,
 			&rightClicking,
 			boxes,
