@@ -7,6 +7,7 @@ import linalg "core:math/linalg"
 import "core:strings"
 import time "core:time"
 import rl "vendor:raylib"
+import "core:math/rand"
 
 
 SCREEN_WIDTH :: 1280
@@ -45,6 +46,7 @@ Attributes :: struct {
 	box_size:        int,
 	money:           int,
 	item:            Item,
+	kill_interval:   f64,
 }
 
 Animal :: struct {
@@ -64,6 +66,7 @@ CollisionBox :: struct {
 	size:                  int,
 	color:                 rl.Color,
 	last_point_spawn_time: f64,
+	last_kill_time:        f64,
 }
 
 Item :: distinct union {
@@ -361,7 +364,7 @@ placeBox :: proc(boxes: ^[dynamic]CollisionBox, attributes: ^Attributes, camera:
 	if rl.IsMouseButtonPressed(.RIGHT) {
 		append(
 			boxes,
-			CollisionBox{world_mouse_position, attributes.box_size, rl.WHITE, rl.GetTime()},
+			CollisionBox{world_mouse_position, attributes.box_size, rl.WHITE, rl.GetTime(), 0},
 		)
 	}
 }
@@ -527,8 +530,9 @@ solve_collisions :: proc(
 	}
 }
 
-update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Animal) {
+update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Animal, enemies: [dynamic]Enemy) {
 	for &box in boxes {
+
 		animals_in_box := make([dynamic]Animal)
 		defer delete(animals_in_box)
 
@@ -537,6 +541,16 @@ update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Anima
 				append(&animals_in_box, animal)
 			}
 		}
+
+		enemies_in_box := make([dynamic]int)
+        defer delete(enemies_in_box)
+
+        // Count enemies in the box
+        for enemy, index in enemies {
+            if is_point_inside_box(enemy.pos, box) {
+                append(&enemies_in_box, index)
+            }
+        }
 
 		if len(animals_in_box) > 0 {
 			all_same_color := true
@@ -554,6 +568,11 @@ update_box_colors :: proc(boxes: ^[dynamic]CollisionBox, animals: [dynamic]Anima
 			} else {
 				box.color = rl.WHITE
 			}
+
+
+        // Check if there are only enemies in the box
+		} else if len(enemies_in_box) > 0 && count_animals_in_box(box, animals) == 0 {
+			box.color = rl.PINK
 		} else {
 			box.color = rl.WHITE
 		}
@@ -657,11 +676,12 @@ random_position_in_box :: proc(box: CollisionBox) -> rl.Vector2 {
 
 // Helper function to remove an element from a dynamic array
 ordered_remove :: proc(
-	arr: ^$T,
-	index: int,
+    arr: ^$T,
+    index: int,
 ) where T == [dynamic]RopePoint ||
-	T == [dynamic]Animal ||
-	T == [dynamic]Point {
+    T == [dynamic]Animal ||
+    T == [dynamic]Point ||
+    T == [dynamic]Enemy {
 	if index < 0 || index >= len(arr^) {
 		return
 	}
@@ -710,7 +730,7 @@ draw_scene :: proc(
 	rl.DrawCircleV(ball_pos, ball_rad, player_color)
 
 	if rl.IsKeyDown(.LEFT_SHIFT) {
-		player_color = rl.GRAY
+		player_color = rl.PINK
 	}
 
 	for i in 0 ..= rope_length - 2 {
@@ -772,50 +792,6 @@ draw_scene :: proc(
 		rl.DrawCircleV(point.pos, 5, point.color)
 	}
 
-	if store.is_open {
-		menu_width := i32(300)
-		menu_height := i32(300)
-
-		// Calculate the position to center the menu on the screen
-		menu_x := i32(camera.target.x - (f32(menu_width) / 2))
-		menu_y := i32(camera.target.y - (f32(menu_height) / 2))
-
-		rl.DrawRectangle(menu_x, menu_y, menu_width, menu_height, rl.ColorAlpha(rl.BLACK, 0.7))
-		rl.DrawRectangleLines(menu_x, menu_y, menu_width, menu_height, rl.WHITE)
-
-		rl.DrawText("Store Menu", menu_x + 10, menu_y + 10, 20, rl.WHITE)
-		rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 240, 20, rl.WHITE)
-		rl.DrawText("Red Point ($10)", menu_x + 10, menu_y + 40, 20, rl.RED)
-		rl.DrawText("Green Point ($10)", menu_x + 10, menu_y + 70, 20, rl.GREEN)
-		rl.DrawText("Blue Point ($10)", menu_x + 10, menu_y + 100, 20, rl.BLUE)
-		rl.DrawText("1: Extend Rope", menu_x + 10, menu_y + 130, 20, rl.BLUE)
-		ext_rope_cost_str := fmt.tprintf("(${})", store.extend_rope_cost)
-		rl.DrawText(
-			cstring(raw_data(ext_rope_cost_str)),
-			menu_x + 170,
-			menu_y + 130,
-			20,
-			rl.YELLOW,
-		)
-		rl.DrawText("2: Increase Speed", menu_x + 10, menu_y + 160, 20, rl.BLUE)
-		inc_speed_cost_speed := fmt.tprintf("(${})", store.increase_speed_cost)
-		rl.DrawText(
-			cstring(raw_data(inc_speed_cost_speed)),
-			menu_x + 210,
-			menu_y + 160,
-			20,
-			rl.YELLOW,
-		)
-		rl.DrawText("3: Increase Box Size", menu_x + 10, menu_y + 190, 20, rl.BLUE)
-		inc_size_cost_speed := fmt.tprintf("(${})", store.increase_size_cost)
-		rl.DrawText(
-			cstring(raw_data(inc_size_cost_speed)),
-			menu_x + 230,
-			menu_y + 190,
-			20,
-			rl.YELLOW,
-		)
-	}
 
 
 	rl.EndMode2D()
@@ -886,6 +862,51 @@ draw_scene :: proc(
 		index,
 	)
 
+	if store.is_open {
+		menu_width := i32(300)
+		menu_height := i32(300)
+
+		// Calculate the position to center the menu on the screen
+		menu_x := i32(f32(rl.GetScreenWidth() / 2) - (f32(menu_width) / 2))
+		menu_y := i32(f32(rl.GetScreenHeight() / 2) - (f32(menu_height) / 2))
+
+		rl.DrawRectangle(menu_x, menu_y, menu_width, menu_height, rl.ColorAlpha(rl.BLACK, 0.7))
+		rl.GuiGroupBox(rl.Rectangle{f32(menu_x), f32(menu_y), f32(menu_width), f32(menu_height)}, "Store")
+
+		rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 240, 20, rl.WHITE)
+		rl.DrawText("Red Point ($10)", menu_x + 10, menu_y + 40, 20, rl.RED)
+		rl.DrawText("Green Point ($10)", menu_x + 10, menu_y + 70, 20, rl.GREEN)
+		rl.DrawText("Blue Point ($10)", menu_x + 10, menu_y + 100, 20, rl.BLUE)
+		rl.DrawText("1: Extend Rope", menu_x + 10, menu_y + 130, 20, rl.BLUE)
+		ext_rope_cost_str := fmt.tprintf("(${})", store.extend_rope_cost)
+		rl.DrawText(
+			cstring(raw_data(ext_rope_cost_str)),
+			menu_x + 170,
+			menu_y + 130,
+			20,
+			rl.YELLOW,
+		)
+		rl.DrawText("2: Increase Speed", menu_x + 10, menu_y + 160, 20, rl.BLUE)
+		inc_speed_cost_speed := fmt.tprintf("(${})", store.increase_speed_cost)
+		rl.DrawText(
+			cstring(raw_data(inc_speed_cost_speed)),
+			menu_x + 210,
+			menu_y + 160,
+			20,
+			rl.YELLOW,
+		)
+		rl.DrawText("3: Increase Box Size", menu_x + 10, menu_y + 190, 20, rl.BLUE)
+		inc_size_cost_speed := fmt.tprintf("(${})", store.increase_size_cost)
+		rl.DrawText(
+			cstring(raw_data(inc_size_cost_speed)),
+			menu_x + 230,
+			menu_y + 190,
+			20,
+			rl.YELLOW,
+		)
+	}
+
+
 	rl.EndMode2D()
 
 	rl.EndDrawing()
@@ -901,6 +922,46 @@ item_switch :: proc(index: i32, attributes: ^Attributes) {
 		attributes.item = nil
 	case 3:
 		attributes.item = nil
+	}
+}
+
+eliminate_enemies_in_boxes :: proc(
+    boxes: ^[dynamic]CollisionBox,
+    enemies: ^[dynamic]Enemy,
+	animals: ^[dynamic]Animal,
+	attributes: ^Attributes,
+) {
+	current_time := rl.GetTime()
+
+    for &box in boxes {
+        // Skip if the last elimination was too recent
+        if current_time - box.last_kill_time < attributes.kill_interval {
+            continue
+        }
+
+        enemies_in_box := make([dynamic]int)
+        defer delete(enemies_in_box)
+
+        // Count enemies in the box
+        for enemy, index in enemies {
+            if is_point_inside_box(enemy.pos, box) {
+                append(&enemies_in_box, index)
+            }
+        }
+
+        // Check if there are only enemies in the box
+        if len(enemies_in_box) > 0 && count_animals_in_box(box, animals^) == 0 {
+
+            // Choose a random enemy to eliminate
+			random_index := rand.int_max(len(enemies_in_box))
+			enemy_to_remove := enemies_in_box[random_index]
+
+			// Remove the enemy
+			ordered_remove(enemies, enemy_to_remove)
+
+			// Update the last elimination time for this box
+			box.last_kill_time = current_time
+        }
 	}
 }
 
@@ -946,6 +1007,7 @@ main :: proc() {
 		box_size        = 100,
 		money           = 0,
 		item            = item,
+		kill_interval   = 2.0,
 	}
 
 
@@ -969,6 +1031,7 @@ main :: proc() {
 		size                  = 100,
 		color                 = rl.WHITE,
 		last_point_spawn_time = 0.0,
+		last_kill_time        = 0.0,
 	}
 
 	pause := true
@@ -1037,10 +1100,11 @@ main :: proc() {
 			update_animals(&animals) // Update animals to move towards the player
 			update_enemies(&enemies, boxes) // Update animals to move towards the player
 			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking)
-			update_box_colors(&boxes, animals)
+			update_box_colors(&boxes, animals, enemies)
 			spawn_points(&boxes, animals, &points)
 			collect_points(rope, &points, &score)
 			item_switch(index, &attributes)
+			eliminate_enemies_in_boxes(&boxes, &enemies, &animals, &attributes)
 			rope[len(rope) - 1].pos += (tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
 
 			// Spawn animals periodically
