@@ -6,6 +6,7 @@ import math "core:math"
 import linalg "core:math/linalg"
 import time "core:time"
 import rl "vendor:raylib"
+import "core:strings"
 
 
 SCREEN_WIDTH :: 1280
@@ -20,7 +21,7 @@ PLAYER_COLOR :: rl.WHITE
 PLAYER_RADIUS :: 12
 REST_ROPE_LENGTH :: 8
 REST_LENGTH :: 1
-EXT_REST_LENGTH :: 5
+EXT_REST_LENGTH :: 4
 ROPE_MAX_DIST :: 70
 ANIMAL_RADIUS :: 10
 ANIMAL_SPEED :: 0.5
@@ -42,6 +43,8 @@ Attributes :: struct {
 	ext_rope_length: int,
 	speed:           f32,
 	box_size:        int,
+	money:           int,
+	item:            Item,
 }
 
 Animal :: struct {
@@ -181,24 +184,24 @@ handle_input :: proc(
 
 	if store.is_open {
 		if rl.IsKeyPressed(.ENTER) {
-			sell_points(score)
+			sell_points(score, attributes)
 		}
-		if rl.IsKeyPressed(.ONE) && store.money > store.extend_rope_cost {
+		if rl.IsKeyPressed(.ONE) && attributes.money > store.extend_rope_cost {
 			attributes.ext_rope_length += 1
-			store.money -= store.extend_rope_cost
+			attributes.money -= store.extend_rope_cost
 			store.extend_rope_cost += (store.extend_rope_cost / 1)
 		}
-		if rl.IsKeyPressed(.TWO) && store.money > store.increase_speed_cost {
+		if rl.IsKeyPressed(.TWO) && attributes.money > store.increase_speed_cost {
 			attributes.speed += 0.7
-			store.money -= store.increase_speed_cost
+			attributes.money -= store.increase_speed_cost
 			store.increase_speed_cost += (store.increase_speed_cost / 1)
 		}
-		if rl.IsKeyPressed(.THREE) && store.money > store.increase_size_cost {
+		if rl.IsKeyPressed(.THREE) && attributes.money > store.increase_size_cost {
 			attributes.box_size += 20
 			for &box in boxes {
 				box.size = attributes.box_size
 			}
-			store.money -= store.increase_size_cost
+			attributes.money -= store.increase_size_cost
 			store.increase_size_cost += (store.increase_size_cost / 1)
 		}
 	}
@@ -623,8 +626,8 @@ toggle_store :: proc() {
 	store.is_open = !store.is_open
 }
 
-sell_points :: proc(score: ^Score) {
-	store.money += (score.red + score.green + score.blue) * POINT_VALUE
+sell_points :: proc(score: ^Score, attributes: ^Attributes) {
+	attributes.money += (score.red + score.green + score.blue) * POINT_VALUE
 	score.red = 0
 	score.green = 0
 	score.blue = 0
@@ -697,6 +700,8 @@ draw_scene :: proc(
 	boxes: [dynamic]CollisionBox,
 	points: [dynamic]Point,
 	store: Store,
+	attributes: Attributes,
+	index: ^i32
 ) {
 	player_color := rl.WHITE
 	rl.BeginDrawing()
@@ -735,37 +740,7 @@ draw_scene :: proc(
 	bottom_left := rl.Vector2{top_left.x, top_left.y + screen_height / camera.zoom}
 	top_right := rl.Vector2{top_left.x + screen_width / camera.zoom, top_left.y}
 
-	// Draw UI elements
-	rl.DrawText("PAUSE: ESCAPE", i32(bottom_left.x) + 10, i32(bottom_left.y) - 25, 20, FG_COLOR)
-	rl.DrawText("MONEY:", i32(top_left.x) + 10, i32(top_left.y) + 10, 20, rl.GOLD)
-	fps_str := fmt.tprintf("%d", store.money)
-	rl.DrawText(
-		cstring(raw_data(fps_str)),
-		i32(top_left.x) + 100,
-		i32(top_left.y) + 10,
-		20,
-		rl.GOLD,
-	)
-
 	// Update this part in the draw_scene function
-	rl.DrawText("SCORE: ", i32(top_right.x) - 250, i32(top_right.y) + 10, 20, rl.WHITE)
-
-	// Draw each score in its respective color
-	red_score_str := fmt.tprintf("{}", score.red)
-	green_score_str := fmt.tprintf("{}", score.green)
-	blue_score_str := fmt.tprintf("{}", score.blue)
-
-	x_offset := i32(top_right.x) - 170
-	y_pos := i32(top_right.y) + 10
-
-	rl.DrawText(cstring(raw_data(red_score_str)), x_offset, y_pos, 20, rl.RED)
-	x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 8
-
-	rl.DrawText(cstring(raw_data(green_score_str)), x_offset, y_pos, 20, rl.GREEN)
-	x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 8
-
-	rl.DrawText(cstring(raw_data(blue_score_str)), x_offset, y_pos, 20, rl.BLUE)
-
 	if rightClicking^ {
 		rl.DrawText(
 			"RIGHT CLICKING",
@@ -844,14 +819,119 @@ draw_scene :: proc(
 
 
 	rl.EndMode2D()
+
+    gui_camera := rl.Camera2D{
+        offset = {0, 0},
+        target = {0, 0},
+        rotation = 0,
+        zoom = 1,
+    }
+
+    rl.BeginMode2D(gui_camera)
+
+	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 20)
+
+    // Draw your GUI elements here
+    // Example:
+	money_text: [256]u8
+	fmt.bprintf(money_text[:], "Money: %d", attributes.money)
+
+	// Convert to cstring and add the textSize parameter
+	rl.GuiLabel(
+		rl.Rectangle{10, 10, 100, 30},
+		cstring(&money_text[0]),
+	)
+
+	rl.GuiLabel(
+		rl.Rectangle{10, f32(rl.GetScreenHeight() - 40), 100, 30},
+		cstring("Pause: ESC"),
+	)
+
+	rl.GuiLabel(
+		rl.Rectangle{f32(rl.GetScreenWidth()) - 245, 10, 100, 30},
+		cstring("Score:"),
+	)
+
+	// Draw each score in its respective color
+	red_score_str := fmt.tprintf("{}", score.red)
+	green_score_str := fmt.tprintf("{}", score.green)
+	blue_score_str := fmt.tprintf("{}", score.blue)
+
+	x_offset := i32(rl.GetScreenWidth()) - 170
+	y_pos := i32(17)
+
+	rl.DrawText(cstring(raw_data(red_score_str)), x_offset, y_pos, 20, rl.RED)
+	x_offset += i32(rl.MeasureText(cstring(raw_data(red_score_str)), 20)) + 8
+
+	rl.DrawText(cstring(raw_data(green_score_str)), x_offset, y_pos, 20, rl.GREEN)
+	x_offset += i32(rl.MeasureText(cstring(raw_data(green_score_str)), 20)) + 8
+
+	rl.DrawText(cstring(raw_data(blue_score_str)), x_offset, y_pos, 20, rl.BLUE)
+
+	tray_x := i32(rl.GetScreenWidth()) - 70
+	tray_y := i32(rl.GetScreenHeight() / 2 - 75)
+	tray_w := i32(50)
+	tray_h := i32(177)
+
+	rl.DrawRectangleLines(tray_x, tray_y, tray_w, tray_h, rl.GRAY)
+
+	items_str := fmt.tprintf(
+		"{}\nTWO\nTHREE\n{}",
+		rl.GuiIconText(.ICON_BOX_CORNERS_BIG, ""),
+		rl.GuiIconText(.ICON_TOOLS, "")
+	)
+
+	icons := []rl.GuiIconName{
+	.ICON_CURSOR_HAND,
+    .ICON_BOX_DOTS_BIG,
+    .ICON_CUBE,  // Example of another icon
+    .ICON_TOOLS,
+}
+	icons_str := icons_to_cstring(icons)
+
+	rl.GuiToggleGroup(
+		rl.Rectangle{f32(tray_x + 5), f32(tray_y + 5), f32(tray_w - 10), f32(40)},
+		icons_str,
+		index
+	)
+
+    rl.EndMode2D()
+
 	rl.EndDrawing()
+}
+
+item_switch :: proc(index: i32, attributes: ^Attributes) {
+	switch index {
+	case 0:
+		attributes.item = nil
+	case 1:
+		attributes.item = nil
+	case 2:
+		attributes.item = nil
+	case 3:
+		attributes.item = nil
+	}
+}
+
+
+icons_to_cstring :: proc(icons: []rl.GuiIconName) -> cstring {
+    builder := strings.builder_make()
+    defer strings.builder_destroy(&builder)
+    for icon, i in icons {
+        icon_text := rl.GuiIconText(icon, "")
+        strings.write_string(&builder, string(icon_text))
+        if i < len(icons) - 1 {
+            strings.write_byte(&builder, '\n')  // Add newline between icons, but not after the last one
+        }
+    }
+
+    return strings.clone_to_cstring(strings.to_string(builder))
 }
 
 main :: proc() {
 	rl.SetConfigFlags(rl.ConfigFlags{.MSAA_4X_HINT})
 	rl.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "ball and chain")
 	defer rl.CloseWindow()
-
 	ball_pos := rl.Vector2{f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)}
 	ball_rad := f32(PLAYER_RADIUS)
 	player_targ := rl.Vector2{f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)}
@@ -862,11 +942,23 @@ main :: proc() {
 
 	rope_length := REST_ROPE_LENGTH
 
+	item: Item = CollisionBox{
+            pos = {0, 0},  // Default position
+            size = 100,
+            color = rl.WHITE,
+            last_point_spawn_time = 0,
+	}
+
+	index: i32 = 0
 	attributes := Attributes {
 		ext_rope_length = 10,
 		speed           = 4,
 		box_size        = 100,
+		money           = 0,
+		item            = item
 	}
+
+
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
 	rest_length := REST_LENGTH
@@ -889,7 +981,6 @@ main :: proc() {
 		color                 = rl.WHITE,
 		last_point_spawn_time = 0.0,
 	}
-	item: Item = box
 
 	pause := true
 	framesCounter := 0
@@ -908,7 +999,6 @@ main :: proc() {
 
 	store = Store {
 		is_open             = false,
-		money               = 0,
 		attributes          = attributes,
 		extend_rope_cost    = 10,
 		increase_speed_cost = 10,
@@ -952,13 +1042,16 @@ main :: proc() {
 				camera,
 				attributes,
 			)
-			placeItem(&item, &boxes, &attributes, &camera)
+			if item != nil {
+				placeItem(&item, &boxes, &attributes, &camera)
+			}
 			update_animals(&animals) // Update animals to move towards the player
 			update_enemies(&enemies, boxes) // Update animals to move towards the player
 			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking)
 			update_box_colors(&boxes, animals)
 			spawn_points(&boxes, animals, &points)
 			collect_points(rope, &points, &score)
+			item_switch(index, &attributes)
 			rope[len(rope) - 1].pos += (tether_pos - rope[len(rope) - 1].pos) / TETHER_LERP_FACTOR
 
 			// Spawn animals periodically
@@ -991,6 +1084,8 @@ main :: proc() {
 			boxes,
 			points,
 			store,
+			attributes,
+			&index
 		)
 	}
 }
