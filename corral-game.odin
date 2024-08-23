@@ -4,9 +4,9 @@ import "base:runtime"
 import "core:fmt"
 import math "core:math"
 import linalg "core:math/linalg"
+import "core:strings"
 import time "core:time"
 import rl "vendor:raylib"
-import "core:strings"
 
 
 SCREEN_WIDTH :: 1280
@@ -701,7 +701,7 @@ draw_scene :: proc(
 	points: [dynamic]Point,
 	store: Store,
 	attributes: Attributes,
-	index: ^i32
+	index: ^i32,
 ) {
 	player_color := rl.WHITE
 	rl.BeginDrawing()
@@ -820,37 +820,28 @@ draw_scene :: proc(
 
 	rl.EndMode2D()
 
-    gui_camera := rl.Camera2D{
-        offset = {0, 0},
-        target = {0, 0},
-        rotation = 0,
-        zoom = 1,
-    }
+	gui_camera := rl.Camera2D {
+		offset   = {0, 0},
+		target   = {0, 0},
+		rotation = 0,
+		zoom     = 1,
+	}
 
-    rl.BeginMode2D(gui_camera)
+	rl.BeginMode2D(gui_camera)
 
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 20)
 
-    // Draw your GUI elements here
-    // Example:
+	// Draw your GUI elements here
+	// Example:
 	money_text: [256]u8
 	fmt.bprintf(money_text[:], "Money: %d", attributes.money)
 
 	// Convert to cstring and add the textSize parameter
-	rl.GuiLabel(
-		rl.Rectangle{10, 10, 100, 30},
-		cstring(&money_text[0]),
-	)
+	rl.GuiLabel(rl.Rectangle{10, 10, 100, 30}, cstring(&money_text[0]))
 
-	rl.GuiLabel(
-		rl.Rectangle{10, f32(rl.GetScreenHeight() - 40), 100, 30},
-		cstring("Pause: ESC"),
-	)
+	rl.GuiLabel(rl.Rectangle{10, f32(rl.GetScreenHeight() - 40), 100, 30}, cstring("Pause: ESC"))
 
-	rl.GuiLabel(
-		rl.Rectangle{f32(rl.GetScreenWidth()) - 245, 10, 100, 30},
-		cstring("Score:"),
-	)
+	rl.GuiLabel(rl.Rectangle{f32(rl.GetScreenWidth()) - 245, 10, 100, 30}, cstring("Score:"))
 
 	// Draw each score in its respective color
 	red_score_str := fmt.tprintf("{}", score.red)
@@ -878,24 +869,24 @@ draw_scene :: proc(
 	items_str := fmt.tprintf(
 		"{}\nTWO\nTHREE\n{}",
 		rl.GuiIconText(.ICON_BOX_CORNERS_BIG, ""),
-		rl.GuiIconText(.ICON_TOOLS, "")
+		rl.GuiIconText(.ICON_TOOLS, ""),
 	)
 
-	icons := []rl.GuiIconName{
-	.ICON_CURSOR_HAND,
-    .ICON_BOX_DOTS_BIG,
-    .ICON_CUBE,  // Example of another icon
-    .ICON_TOOLS,
-}
+	icons := []rl.GuiIconName {
+		.ICON_CURSOR_HAND,
+		.ICON_BOX_DOTS_BIG,
+		.ICON_CUBE, // Example of another icon
+		.ICON_TOOLS,
+	}
 	icons_str := icons_to_cstring(icons)
 
 	rl.GuiToggleGroup(
 		rl.Rectangle{f32(tray_x + 5), f32(tray_y + 5), f32(tray_w - 10), f32(40)},
 		icons_str,
-		index
+		index,
 	)
 
-    rl.EndMode2D()
+	rl.EndMode2D()
 
 	rl.EndDrawing()
 }
@@ -913,19 +904,18 @@ item_switch :: proc(index: i32, attributes: ^Attributes) {
 	}
 }
 
-
 icons_to_cstring :: proc(icons: []rl.GuiIconName) -> cstring {
-    builder := strings.builder_make()
-    defer strings.builder_destroy(&builder)
-    for icon, i in icons {
-        icon_text := rl.GuiIconText(icon, "")
-        strings.write_string(&builder, string(icon_text))
-        if i < len(icons) - 1 {
-            strings.write_byte(&builder, '\n')  // Add newline between icons, but not after the last one
-        }
-    }
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	for icon, i in icons {
+		icon_text := rl.GuiIconText(icon, "")
+		strings.write_string(&builder, string(icon_text))
+		if i < len(icons) - 1 {
+			strings.write_byte(&builder, '\n') // Add newline between icons, but not after the last one
+		}
+	}
 
-    return strings.clone_to_cstring(strings.to_string(builder))
+	return strings.clone_to_cstring(strings.to_string(builder))
 }
 
 main :: proc() {
@@ -942,11 +932,11 @@ main :: proc() {
 
 	rope_length := REST_ROPE_LENGTH
 
-	item: Item = CollisionBox{
-            pos = {0, 0},  // Default position
-            size = 100,
-            color = rl.WHITE,
-            last_point_spawn_time = 0,
+	item: Item = CollisionBox {
+		pos                   = {0, 0}, // Default position
+		size                  = 100,
+		color                 = rl.WHITE,
+		last_point_spawn_time = 0,
 	}
 
 	index: i32 = 0
@@ -955,9 +945,8 @@ main :: proc() {
 		speed           = 4,
 		box_size        = 100,
 		money           = 0,
-		item            = item
+		item            = item,
 	}
-
 
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
@@ -1085,7 +1074,7 @@ main :: proc() {
 			points,
 			store,
 			attributes,
-			&index
+			&index,
 		)
 	}
 }
