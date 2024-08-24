@@ -739,7 +739,7 @@ draw_scene :: proc(
 	rightClicking: ^bool,
 	boxes: [dynamic]CollisionBox,
 	points: [dynamic]Point,
-	store: Store,
+	store: ^Store,
 	attributes: Attributes,
 	index: ^i32,
 ) {
@@ -875,6 +875,11 @@ draw_scene :: proc(
 		icons_str,
 		index,
 	)
+
+	if rl.GuiButton(
+		rl.Rectangle{f32(rl.GetScreenWidth() - 70), f32(rl.GetScreenHeight() - 70), 40, 40},
+		"$"
+	) {store.is_open = !store.is_open}
 
 	if store.is_open {
 		menu_width := i32(300)
@@ -1147,7 +1152,7 @@ main :: proc() {
 			&rightClicking,
 			boxes,
 			points,
-			store,
+			&store,
 			attributes,
 			&index,
 		)
