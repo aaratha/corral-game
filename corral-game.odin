@@ -69,8 +69,11 @@ CollisionBox :: struct {
 	last_kill_time:        f64,
 }
 
+DeleteItem :: struct {}
+
 Item :: distinct union {
 	CollisionBox,
+	DeleteItem,
 	// Add any other types you want to be placeable here
 }
 
@@ -369,6 +372,20 @@ placeBox :: proc(boxes: ^[dynamic]CollisionBox, attributes: ^Attributes, camera:
 	}
 }
 
+delete_item :: proc(boxes: ^[dynamic]CollisionBox, camera: ^rl.Camera2D) {
+	mouse_pos := rl.GetMousePosition()
+	world_mouse_pos := rl.GetScreenToWorld2D(mouse_pos, camera^)
+
+	if rl.IsMouseButtonPressed(.RIGHT) {
+		for i := 0; i < len(boxes); i += 1 {
+			if is_point_inside_box(world_mouse_pos, boxes[i]) {
+				ordered_remove(boxes, i)
+				break // Only remove one animal per space press
+			}
+		}
+	}
+}
+
 placeItem :: proc(
 	item: ^Item,
 	boxes: ^[dynamic]CollisionBox,
@@ -380,6 +397,8 @@ placeItem :: proc(
 		case CollisionBox:
 			placeBox(boxes, attributes, camera)
 		// Add cases for any other placeable item types
+		case DeleteItem:
+			delete_item(boxes, camera)
 		}
 	}
 }
@@ -681,7 +700,8 @@ ordered_remove :: proc(
 ) where T == [dynamic]RopePoint ||
     T == [dynamic]Animal ||
     T == [dynamic]Point ||
-    T == [dynamic]Enemy {
+    T == [dynamic]Enemy ||
+	T == [dynamic]CollisionBox {
 	if index < 0 || index >= len(arr^) {
 		return
 	}
@@ -842,17 +862,11 @@ draw_scene :: proc(
 
 	rl.DrawRectangleLines(tray_x, tray_y, tray_w, tray_h, rl.GRAY)
 
-	items_str := fmt.tprintf(
-		"{}\nTWO\nTHREE\n{}",
-		rl.GuiIconText(.ICON_BOX_CORNERS_BIG, ""),
-		rl.GuiIconText(.ICON_TOOLS, ""),
-	)
-
 	icons := []rl.GuiIconName {
 		.ICON_CURSOR_HAND,
 		.ICON_BOX_DOTS_BIG,
 		.ICON_CUBE, // Example of another icon
-		.ICON_TOOLS,
+		.ICON_BIN,
 	}
 	icons_str := icons_to_cstring(icons)
 
@@ -917,11 +931,16 @@ item_switch :: proc(index: i32, attributes: ^Attributes) {
 	case 0:
 		attributes.item = nil
 	case 1:
-		attributes.item = nil
+		attributes.item = CollisionBox {
+			pos                   = {0, 0}, // Default position
+			size                  = attributes.box_size,
+			color                 = rl.WHITE,
+			last_point_spawn_time = 0,
+		}
 	case 2:
 		attributes.item = nil
 	case 3:
-		attributes.item = nil
+		attributes.item = DeleteItem{}
 	}
 }
 
@@ -993,14 +1012,9 @@ main :: proc() {
 
 	rope_length := REST_ROPE_LENGTH
 
-	item: Item = CollisionBox {
-		pos                   = {0, 0}, // Default position
-		size                  = 100,
-		color                 = rl.WHITE,
-		last_point_spawn_time = 0,
-	}
-
+	item: Item = nil
 	index: i32 = 0
+
 	attributes := Attributes {
 		ext_rope_length = 10,
 		speed           = 4,
@@ -1009,7 +1023,6 @@ main :: proc() {
 		item            = item,
 		kill_interval   = 2.0,
 	}
-
 
 	anchor := rl.Vector2{f32(rl.GetScreenWidth() / 2), 50}
 	rest_length := REST_LENGTH
@@ -1094,9 +1107,7 @@ main :: proc() {
 				camera,
 				attributes,
 			)
-			if item != nil {
-				placeItem(&item, &boxes, &attributes, &camera)
-			}
+			placeItem(&attributes.item, &boxes, &attributes, &camera)
 			update_animals(&animals) // Update animals to move towards the player
 			update_enemies(&enemies, boxes) // Update animals to move towards the player
 			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking)
