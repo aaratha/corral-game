@@ -10,28 +10,29 @@ import rl "vendor:raylib"
 import "core:math/rand"
 
 
-SCREEN_WIDTH :: 1280
-SCREEN_HEIGHT :: 720
+SCREEN_WIDTH       :: 1280
+SCREEN_HEIGHT      :: 720
 TETHER_LERP_FACTOR :: 6
 PLAYER_LERP_FACTOR :: 6
 CAMERA_LERP_FACTOR :: 6
-FRICTION :: 0.9
-BG_COLOR :: rl.BLACK
-FG_COLOR :: rl.WHITE
-PLAYER_COLOR :: rl.WHITE
-PLAYER_RADIUS :: 12
-REST_ROPE_LENGTH :: 8
-REST_LENGTH :: 1
-EXT_REST_LENGTH :: 7
-ROPE_MAX_DIST :: 70
-ANIMAL_RADIUS :: 10
-ANIMAL_SPEED :: 0.2
-ENEMY_RADIUS :: 10
-ENEMY_SPEED :: 0.8
-TETHER_RADIUS :: 10
-MIN_ZOOM :: 0.5
-MAX_ZOOM :: 2
-ZOOM_SPEED :: 0.06
+FRICTION           :: 0.9
+BG_COLOR           :: rl.BLACK
+FG_COLOR           :: rl.WHITE
+PLAYER_COLOR       :: rl.WHITE
+PLAYER_RADIUS      :: 12
+REST_ROPE_LENGTH   :: 8
+REST_LENGTH        :: 1
+EXT_REST_LENGTH    :: 7
+ROPE_MAX_DIST      :: 70
+ANIMAL_RADIUS      :: 10
+ANIMAL_SPEED       :: 0.2
+ENEMY_RADIUS       :: 10
+ENEMY_SPEED        :: 0.8
+TETHER_RADIUS      :: 10
+MIN_ZOOM           :: 0.5
+MAX_ZOOM           :: 2
+ZOOM_SPEED         :: 0.06
+COLLISION_BOUNCE   :: 0.2
 
 mat :: distinct matrix[2, 2]f32
 
@@ -409,6 +410,51 @@ placeItem :: proc(
 	}
 }
 
+line_intersects_circle :: proc(
+    line_start, line_end: rl.Vector2,
+    circle_center: rl.Vector2,
+    circle_radius: f32,
+) -> bool {
+    // Vector from line start to circle center
+    ac := circle_center - line_start
+
+    // Vector representing the line
+    ab := line_end - line_start
+
+    // Project ac onto ab
+    t := rl.Vector2DotProduct(ac, ab) / rl.Vector2DotProduct(ab, ab)
+
+    // If the projection is outside the line segment, check distance to endpoints
+    if t < 0 {
+        return rl.Vector2Length(ac) <= circle_radius
+    } else if t > 1 {
+        return rl.Vector2Length(circle_center - line_end) <= circle_radius
+    }
+
+    // Find the closest point on the line segment to the circle center
+    closest_point := line_start + ab * t
+
+    // Check if the closest point is within the circle
+    return rl.Vector2Distance(closest_point, circle_center) <= circle_radius
+}
+
+is_in_camera_view :: proc(point: rl.Vector2, camera: rl.Camera2D) -> bool {
+    screen_width := f32(rl.GetScreenWidth())
+    screen_height := f32(rl.GetScreenHeight())
+
+    // Calculate camera boundaries
+    left := camera.target.x - camera.offset.x / camera.zoom
+    right := left + screen_width / camera.zoom
+    top := camera.target.y - camera.offset.y / camera.zoom
+    bottom := top + screen_height / camera.zoom
+
+    // Add a small buffer to avoid edge cases
+    buffer := f32(50)
+
+    return point.x >= left - buffer && point.x <= right + buffer &&
+           point.y >= top - buffer && point.y <= bottom + buffer
+}
+
 solve_collisions :: proc(
 	ball_pos: ^rl.Vector2,
 	rope: [dynamic]RopePoint,
@@ -416,98 +462,135 @@ solve_collisions :: proc(
 	enemies: ^[dynamic]Enemy,
 	boxes: ^[dynamic]CollisionBox,
 	rightClicking: ^bool,
+	camera: rl.Camera2D
 ) {
 
 	// Ball vs Animals
 	for i := 0; i < len(animals); i += 1 {
-		dir := ball_pos^ - animals[i].pos
-		distance := rl.Vector2Length(dir)
-		min_dist := f32(PLAYER_RADIUS + ANIMAL_RADIUS)
-		if distance < min_dist {
-			normal := rl.Vector2Normalize(dir)
-			depth := min_dist - distance
-			ball_pos^ = ball_pos^ + (normal * depth * 0.5)
-			animals[i].pos = animals[i].pos - (normal * depth * 0.5)
+		if is_in_camera_view(animals[i].pos, camera) {
+			dir := ball_pos^ - animals[i].pos
+			distance := rl.Vector2Length(dir)
+			min_dist := f32(PLAYER_RADIUS + ANIMAL_RADIUS)
+			if distance < min_dist {
+				normal := rl.Vector2Normalize(dir)
+				depth := min_dist - distance
+				ball_pos^ = ball_pos^ + (normal * depth * 0.5)
+				animals[i].pos = animals[i].pos - (normal * depth * 0.5)
+			}
 		}
 	}
 
 	// Rope segments vs Animals
-	if rl.IsKeyDown(.LEFT_SHIFT) == false {
-		for i := 0; i < len(rope); i += 1 {
-			for j := 0; j < len(animals); j += 1 {
-				dir := rope[i].pos - animals[j].pos
-				distance := rl.Vector2Length(dir)
-				min_dist := f32(TETHER_RADIUS + ANIMAL_RADIUS + 4)
+    if rl.IsKeyDown(.LEFT_SHIFT) == false {
+        for i := 0; i < len(rope) - 1; i += 1 {
+            for j := 0; j < len(animals); j += 1 {
+				if is_in_camera_view(animals[j].pos, camera) {
+					if line_intersects_circle(rope[i].pos, rope[i+1].pos, animals[j].pos, ANIMAL_RADIUS) {
+						// Calculate the closest point on the line segment to the animal
+						t := rl.Vector2DotProduct(animals[j].pos - rope[i].pos, rope[i+1].pos - rope[i].pos) /
+							rl.Vector2DotProduct(rope[i+1].pos - rope[i].pos, rope[i+1].pos - rope[i].pos)
+						t = math.clamp(t, 0, 1)
+						closest_point := rope[i].pos + (rope[i+1].pos - rope[i].pos) * t
 
-				if distance < min_dist {
-					normal := rl.Vector2Normalize(dir)
-					depth := min_dist - distance
-					rope[i].pos = rope[i].pos + (normal * depth * 0.5)
-					animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+						// Calculate the direction and depth of penetration
+						dir := animals[j].pos - closest_point
+						distance := rl.Vector2Length(dir)
+						min_dist := f32(TETHER_RADIUS + ANIMAL_RADIUS + 4)
+
+						if distance < min_dist {
+							normal := rl.Vector2Normalize(dir)
+							depth := (min_dist - distance) * COLLISION_BOUNCE
+							animals[j].pos = animals[j].pos + (normal * depth)
+						}
+                    }
+                }
+            }
+        }
+    }
+
+	// Animals vs Animals
+	for i := 0; i < len(animals) - 1; i += 1 {
+		if is_in_camera_view(animals[i].pos, camera) {
+			for j := i + 1; j < len(animals); j += 1 {
+
+				if is_in_camera_view(animals[j].pos, camera) {
+
+					dir := animals[i].pos - animals[j].pos
+					distance := rl.Vector2Length(dir)
+					min_dist := f32(ANIMAL_RADIUS * 2)
+
+					if distance < min_dist {
+						normal := rl.Vector2Normalize(dir)
+						depth := min_dist - distance
+						animals[i].pos = animals[i].pos + (normal * depth * 0.5)
+						animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+					}
 				}
 			}
 		}
 	}
 
-	// Animals vs Animals
-	for i := 0; i < len(animals) - 1; i += 1 {
-		for j := i + 1; j < len(animals); j += 1 {
-			dir := animals[i].pos - animals[j].pos
-			distance := rl.Vector2Length(dir)
-			min_dist := f32(ANIMAL_RADIUS * 2)
-
-			if distance < min_dist {
-				normal := rl.Vector2Normalize(dir)
-				depth := min_dist - distance
-				animals[i].pos = animals[i].pos + (normal * depth * 0.5)
-				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
-			}
-		}
-	}
-
 	for i := 0; i < len(enemies) - 1; i += 1 {
-		for j := i + 1; j < len(enemies); j += 1 {
-			dir := enemies[i].pos - enemies[j].pos
-			distance := rl.Vector2Length(dir)
-			min_dist := f32(ENEMY_RADIUS * 2)
+		if is_in_camera_view(enemies[i].pos, camera) {
+			for j := i + 1; j < len(enemies); j += 1 {
+				if is_in_camera_view(enemies[j].pos, camera) {
+					dir := enemies[i].pos - enemies[j].pos
+					distance := rl.Vector2Length(dir)
+					min_dist := f32(ENEMY_RADIUS * 2)
 
-			if distance < min_dist {
-				normal := rl.Vector2Normalize(dir)
-				depth := min_dist - distance
-				enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
-				enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
+					if distance < min_dist {
+						normal := rl.Vector2Normalize(dir)
+						depth := min_dist - distance
+						enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
+						enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
+					}
+				}
 			}
 		}
 	}
 
 	// Enemies vs Rope Points
-	for i := 0; i < len(rope); i += 1 {
-		for j := 0; j < len(enemies); j += 1 {
-			dir := rope[i].pos - enemies[j].pos
-			distance := rl.Vector2Length(dir)
-			min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS + 4)
+	for i := 0; i < len(rope) - 1; i += 1 {
+        for j := 0; j < len(enemies); j += 1 {
+			if is_in_camera_view(enemies[j].pos, camera) {
+				if line_intersects_circle(rope[i].pos, rope[i+1].pos, enemies[j].pos, ENEMY_RADIUS) {
+					// Calculate the closest point on the line segment to the enemy
+					t := rl.Vector2DotProduct(enemies[j].pos - rope[i].pos, rope[i+1].pos - rope[i].pos) /
+						rl.Vector2DotProduct(rope[i+1].pos - rope[i].pos, rope[i+1].pos - rope[i].pos)
+					t = math.clamp(t, 0, 1)
+					closest_point := rope[i].pos + (rope[i+1].pos - rope[i].pos) * t
 
-			if distance < min_dist {
-				normal := rl.Vector2Normalize(dir)
-				depth := min_dist - distance
-				rope[i].pos = rope[i].pos + (normal * depth * 0.5)
-				enemies[j].pos = enemies[j].pos - (normal * depth * 0.5)
-			}
-		}
-	}
+					// Calculate the direction and depth of penetration
+					dir := enemies[j].pos - closest_point
+					distance := rl.Vector2Length(dir)
+					min_dist := f32(TETHER_RADIUS + ENEMY_RADIUS + 4)
+
+					if distance < min_dist {
+						normal := rl.Vector2Normalize(dir)
+						depth := (min_dist - distance) * COLLISION_BOUNCE
+						enemies[j].pos = enemies[j].pos + (normal * depth)
+					}
+				}
+            }
+        }
+    }
 
 	// Enemies vs Animal s
 	for i := 0; i < len(enemies); i += 1 {
-		for j := 0; j < len(animals); j += 1 {
-			dir := enemies[i].pos - animals[j].pos
-			distance := rl.Vector2Length(dir)
-			min_dist := f32(ENEMY_RADIUS + ANIMAL_RADIUS)
+		if is_in_camera_view(enemies[i].pos, camera) {
+			for j := 0; j < len(animals); j += 1 {
+				if is_in_camera_view(animals[j].pos, camera) {
+					dir := enemies[i].pos - animals[j].pos
+					distance := rl.Vector2Length(dir)
+					min_dist := f32(ENEMY_RADIUS + ANIMAL_RADIUS)
 
-			if distance < min_dist {
-				normal := rl.Vector2Normalize(dir)
-				depth := min_dist - distance
-				enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
-				animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+					if distance < min_dist {
+						normal := rl.Vector2Normalize(dir)
+						depth := min_dist - distance
+						enemies[i].pos = enemies[i].pos + (normal * depth * 0.5)
+						animals[j].pos = animals[j].pos - (normal * depth * 0.5)
+					}
+				}
 			}
 		}
 	}
@@ -1131,7 +1214,7 @@ main :: proc() {
 			placeItem(&attributes.item, &boxes, &attributes, &camera)
 			update_animals(&animals) // Update animals to move towards the player
 			update_enemies(&enemies, boxes) // Update animals to move towards the player
-			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking)
+			solve_collisions(&ball_pos, rope, &animals, &enemies, &boxes, &rightClicking, camera)
 			update_box_colors(&boxes, animals, enemies)
 			spawn_points(&boxes, animals, &points)
 			collect_points(rope, &points, &score)
