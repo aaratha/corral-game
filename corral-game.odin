@@ -899,9 +899,9 @@ draw_scene :: proc(
 		rl.GuiGroupBox(rl.Rectangle{f32(menu_x), f32(menu_y), f32(menu_width), f32(menu_height)}, "Store")
 
 		rl.DrawText("Press ENTER to sell", menu_x + 10, menu_y + 240, 20, rl.WHITE)
-		rl.DrawText("Red Point ($10)", menu_x + 10, menu_y + 40, 20, rl.RED)
-		rl.DrawText("Green Point ($10)", menu_x + 10, menu_y + 70, 20, rl.GREEN)
-		rl.DrawText("Blue Point ($10)", menu_x + 10, menu_y + 100, 20, rl.BLUE)
+		rl.GuiTextBox(rl.Rectangle{f32(menu_x + 10), f32(menu_y + 10), 200, 30}, "Red Point ($10)", 0, false)
+		rl.GuiTextBox(rl.Rectangle{f32(menu_x + 10), f32(menu_y + 45), 200, 30}, "Green Point ($10)", 0, false)
+		rl.GuiTextBox(rl.Rectangle{f32(menu_x + 10), f32(menu_y + 80), 200, 30}, "Blue Point ($10)", 0, false)
 		rl.DrawText("1: Extend Rope", menu_x + 10, menu_y + 130, 20, rl.BLUE)
 		ext_rope_cost_str := fmt.tprintf("(${})", store.extend_rope_cost)
 		rl.DrawText(
