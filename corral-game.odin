@@ -15,19 +15,19 @@ SCREEN_HEIGHT :: 720
 TETHER_LERP_FACTOR :: 6
 PLAYER_LERP_FACTOR :: 6
 CAMERA_LERP_FACTOR :: 6
-FRICTION :: 0.8
+FRICTION :: 0.9
 BG_COLOR :: rl.BLACK
 FG_COLOR :: rl.WHITE
 PLAYER_COLOR :: rl.WHITE
 PLAYER_RADIUS :: 12
 REST_ROPE_LENGTH :: 8
 REST_LENGTH :: 1
-EXT_REST_LENGTH :: 4
+EXT_REST_LENGTH :: 7
 ROPE_MAX_DIST :: 70
 ANIMAL_RADIUS :: 10
-ANIMAL_SPEED :: 0.5
+ANIMAL_SPEED :: 0.2
 ENEMY_RADIUS :: 10
-ENEMY_SPEED :: 1
+ENEMY_SPEED :: 0.8
 TETHER_RADIUS :: 10
 MIN_ZOOM :: 0.5
 MAX_ZOOM :: 2
@@ -95,6 +95,7 @@ Store :: struct {
 	extend_rope_cost:    int,
 	increase_speed_cost: int,
 	increase_size_cost:  int,
+	increase_kill_cost:  int,
 	red_point_value:     int,
 	green_point_value:   int,
 	blue_point_value:    int,
@@ -209,6 +210,11 @@ handle_input :: proc(
 			}
 			attributes.money -= store.increase_size_cost
 			store.increase_size_cost += (store.increase_size_cost / 1)
+		}
+		if rl.IsKeyPressed(.FOUR) && attributes.money > store.increase_kill_cost {
+			attributes.kill_interval *= 0.75
+			attributes.money -= store.increase_kill_cost
+			store.increase_kill_cost += (store.increase_kill_cost / 1)
 		}
 	}
 
@@ -923,6 +929,15 @@ draw_scene :: proc(
 			20,
 			rl.YELLOW,
 		)
+		rl.DrawText("4: Increase Box Size", menu_x + 10, menu_y + 210, 20, rl.BLUE)
+		inc_kill_cost_speed := fmt.tprintf("(${})", store.increase_kill_cost)
+		rl.DrawText(
+			cstring(raw_data(inc_kill_cost_speed)),
+			menu_x + 230,
+			menu_y + 210,
+			20,
+			rl.YELLOW,
+		)
 	}
 
 
@@ -1072,7 +1087,8 @@ main :: proc() {
 		attributes          = attributes,
 		extend_rope_cost    = 10,
 		increase_speed_cost = 10,
-		increase_size_cost  = 100,
+		increase_size_cost  = 160,
+		increase_kill_cost  = 40,
 		red_point_value     = 10,
 		green_point_value   = 10,
 		blue_point_value    = 10,
